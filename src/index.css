@@ -1,0 +1,35 @@
+/* FILE: src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom theme variables */
+:root {
+  --bg-primary: theme('colors.white');
+  --bg-secondary: theme('colors.gray.50');
+  --bg-tertiary: theme('colors.gray.100');
+  --text-primary: theme('colors.gray.900');
+  --text-secondary: theme('colors.gray.600');
+  --border-primary: theme('colors.gray.200');
+  --border-secondary: theme('colors.gray.300');
+}
+
+[data-theme="dark"] {
+  --bg-primary: theme('colors.gray.900');
+  --bg-secondary: theme('colors.gray.800');
+  --bg-tertiary: theme('colors.gray.700');
+  --text-primary: theme('colors.white');
+  --text-secondary: theme('colors.gray.300');
+  --border-primary: theme('colors.gray.600');
+  --border-secondary: theme('colors.gray.500');
+}
+
+@layer components {
+  .btn-shell {
+    @apply px-3 py-1.5 text-sm border rounded transition-colors duration-200 hover:bg-gray-100;
+  }
+  
+  [data-theme="dark"] .btn-shell {
+    @apply hover:bg-gray-700 border-gray-600 text-gray-200;
+  }
+}
