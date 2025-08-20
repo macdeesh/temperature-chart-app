@@ -54,8 +54,9 @@ jobs:
           # Only create release for tags
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Temperature Chart App v{0}', github.ref_name) || '' }}
-          releaseBody: ${{ startsWith(github.ref, 'refs/tags/') && 'Temperature Chart Desktop Application
-
+          releaseBody: |
+            ${{ startsWith(github.ref, 'refs/tags/') && 'Temperature Chart Desktop Application
+            
             ## Features
             - Import and visualize CSV temperature data
             - Interactive charts with ECharts integration
@@ -67,8 +68,7 @@ jobs:
             
             ## Installation
             - **Windows**: Download the `.msi` installer
-            - **macOS**: Download the `.dmg` file  
-            - **Linux**: Download the `.AppImage` file
+            - **macOS**: Download the `.dmg` file
             
             Built with Tauri + React + TypeScript + ECharts' || '' }}
           releaseDraft: ${{ startsWith(github.ref, 'refs/tags/') }}
