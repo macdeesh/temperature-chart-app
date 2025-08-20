@@ -8,6 +8,10 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     strategy:
@@ -52,11 +56,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Temperature Chart App v${{ github.ref_name }}'
-          releaseBody: |
-            Temperature Chart Desktop Application
-            
+          # Only create release for tags
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Temperature Chart App v{0}', github.ref_name) || '' }}
+          releaseBody: ${{ startsWith(github.ref, 'refs/tags/') && 'Temperature Chart Desktop Application
+
             ## Features
             - Import and visualize CSV temperature data
             - Interactive charts with ECharts integration
@@ -71,8 +75,8 @@ jobs:
             - **macOS**: Download the `.dmg` file  
             - **Linux**: Download the `.AppImage` file
             
-            Built with Tauri + React + TypeScript + ECharts
-          releaseDraft: true
+            Built with Tauri + React + TypeScript + ECharts' || '' }}
+          releaseDraft: ${{ startsWith(github.ref, 'refs/tags/') }}
           prerelease: false
           includeUpdaterJson: false
 
