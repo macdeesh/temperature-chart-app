@@ -21,6 +21,7 @@ const DEFAULT_COLORS = [
 ];
 
 function App() {
+  
   const [isDark, setIsDark] = useState(false);
   const [data, setData] = useState<TemperatureDataPoint[]>([]);
   const [timeMapping, setTimeMapping] = useState<TimeMapping[]>([]);
@@ -40,24 +41,17 @@ function App() {
 
   // Setup Tauri file drop event listener
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
+    let unlistenDrop: (() => void) | undefined;
     
     const setupFileDropListener = async () => {
       try {
-        console.log('Setting up file drop listener...');
-        unlisten = await listen('tauri://file-drop', (event) => {
-          console.log('File drop event received:', event);
-          const files = event.payload as string[];
-          console.log('Dropped files:', files);
-          
-          const csvFile = files.find(file => file.toLowerCase().endsWith('.csv'));
-          console.log('CSV file found:', csvFile);
+        // Use the working drag-drop event
+        unlistenDrop = await listen('tauri://drag-drop', (event) => {
+          const payload = event.payload as { paths: string[], position: { x: number, y: number } };
+          const csvFile = payload.paths.find(file => file.toLowerCase().endsWith('.csv'));
           
           if (csvFile) {
-            console.log('Reading CSV file:', csvFile);
-            // Read the dropped CSV file
             readTextFile(csvFile).then(content => {
-              console.log('File content loaded, length:', content.length);
               const filename = csvFile.split('/').pop() || 'dropped-file.csv';
               handleCSVContent(content, filename);
             }).catch(error => {
@@ -67,11 +61,8 @@ function App() {
                 message: 'Failed to read the dropped file.'
               });
             });
-          } else {
-            console.log('No CSV file found in dropped files');
           }
         });
-        console.log('File drop listener setup complete');
       } catch (error) {
         console.error('Failed to setup file drop listener:', error);
       }
@@ -80,9 +71,8 @@ function App() {
     setupFileDropListener();
     
     return () => {
-      if (unlisten) {
-        console.log('Cleaning up file drop listener');
-        unlisten();
+      if (unlistenDrop) {
+        unlistenDrop();
       }
     };
   }, []);
@@ -160,31 +150,10 @@ function App() {
   };
 
   const handleDrop = (e: React.DragEvent) => {
-    console.log('Browser drag drop event:', e);
     e.preventDefault();
     setDragActive(false);
-    
-    const files = Array.from(e.dataTransfer.files);
-    console.log('Dropped files via browser API:', files);
-    
-    const csvFile = files.find(file => file.name.toLowerCase().endsWith('.csv'));
-    console.log('CSV file found via browser API:', csvFile);
-    
-    if (csvFile) {
-      console.log('Reading file with FileReader...');
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const content = e.target?.result as string;
-        console.log('File content loaded via FileReader, length:', content.length);
-        handleCSVContent(content, csvFile.name);
-      };
-      reader.onerror = (e) => {
-        console.error('FileReader error:', e);
-      };
-      reader.readAsText(csvFile);
-    } else {
-      console.log('No CSV file found in browser drop');
-    }
+    // Note: Tauri intercepts file drops, so this won't be called
+    // Keeping for potential future browser compatibility
   };
 
   const toggleChannel = (channelId: number) => {
@@ -236,10 +205,7 @@ function App() {
   };
 
   const handleExport = async (format: 'png' | 'jpg' = 'png') => {
-    console.log('Export started, chartRef:', chartRef.current);
-    
     if (!chartRef.current) {
-      console.error('No chart reference available');
       setError({
         type: 'invalidValue',
         message: 'Chart not ready. Please try again.'
@@ -248,10 +214,7 @@ function App() {
     }
 
     const chartInstance = chartRef.current.getEchartsInstance();
-    console.log('Chart instance:', chartInstance);
-    
     if (!chartInstance) {
-      console.error('No chart instance available');
       setError({
         type: 'invalidValue',
         message: 'Chart not loaded. Please try again.'
@@ -269,8 +232,6 @@ function App() {
         backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF'
       });
 
-      console.log('DataURL generated, length:', dataURL.length);
-
       if (!dataURL || dataURL === 'data:,') {
         throw new Error('Failed to generate chart image');
       }
@@ -287,19 +248,13 @@ function App() {
         }]
       });
 
-      console.log('Save dialog result:', filePath);
-
       if (filePath) {
         // Convert data URL to binary data
         const base64Data = dataURL.split(',')[1];
         const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
         
-        console.log('Writing file, data size:', binaryData.length);
-        
         // Write file using Tauri's filesystem API
         await writeFile(filePath, binaryData);
-        
-        console.log('Export completed successfully');
       }
     } catch (error) {
       console.error('Export error:', error);
@@ -394,13 +349,16 @@ function App() {
         setError(null);
 
         // Restore zoom state after chart renders
-        if (sessionData.zoomState && chartRef.current) {
+        if (sessionData.zoomState) {
+          // Wait longer for chart to fully render with new data
           setTimeout(() => {
             const chartInstance = chartRef.current?.getEchartsInstance();
             if (chartInstance && sessionData.zoomState) {
               chartInstance.setOption({ dataZoom: sessionData.zoomState });
+              // Force chart update
+              chartInstance.resize();
             }
-          }, 100);
+          }, 500);
         }
       }
     } catch (error) {
@@ -410,6 +368,17 @@ function App() {
         message: 'Failed to load session file. Please check the file format.'
       });
     }
+  };
+
+  const handleStartOver = () => {
+    // Clear all data and reset to initial state
+    setData([]);
+    setTimeMapping([]);
+    setChannels([]);
+    setCurrentFile('');
+    setError(null);
+    setJumpToTime('');
+    setChartMode({ type: 'both' });
   };
 
   const handleJumpToTime = () => {
@@ -516,6 +485,16 @@ function App() {
         >
           Load Session
         </button>
+        
+        {currentFile && (
+          <button 
+            onClick={handleStartOver}
+            className="btn-glass hover-lift ml-2"
+            title="Clear all data and start fresh"
+          >
+            Start Over
+          </button>
+        )}
         
         <div className="ml-auto text-sm text-gray-500 dark:text-gray-400">
           {currentFile ? `📄 ${currentFile}` : 'No file loaded'}
