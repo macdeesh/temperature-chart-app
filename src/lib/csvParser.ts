@@ -5,7 +5,6 @@ import type { TemperatureDataPoint, CSVValidationError, CSVParseResult, TimeMapp
 const MAX_ROWS = 1000; // "hundreds of lines OK" per PRD
 const TEMP_MIN = -100.0;
 const TEMP_MAX = 1400.0;
-const MAX_CHANNELS = 12;
 
 // Parse datetime formats like "15/07/2021 10:38" and extract time
 function parseDateTime(dateTimeStr: string): string | null {
@@ -86,7 +85,6 @@ export function parseCSV(content: string): CSVParseResult {
   // Parse first line to validate basic structure
   const firstRowCols = firstLine.split(delimiter).map(col => col.trim());
   const expectedMinCols = 2; // datetime + at least 1 data column
-  const expectedMaxCols = MAX_CHANNELS + 1; // datetime + up to 12 channels
   
   if (firstRowCols.length < expectedMinCols) {
     return {

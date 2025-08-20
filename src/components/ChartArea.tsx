@@ -1,28 +1,48 @@
 // FILE: src/components/ChartArea.tsx
 // Main chart area using ECharts with zoom/pan functionality
-import { forwardRef, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useImperativeHandle, useRef, useEffect } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { createChartOption } from '../lib/chartConfig';
-import type { TemperatureDataPoint, ChannelConfig, ChartDisplayMode } from '../types';
+import type { TemperatureDataPoint, ChartDisplayMode } from '../types';
+import type { TimeMapping } from '../types/csv';
+
+interface ChannelConfig {
+  id: number;
+  label: string;
+  visible: boolean;
+  color: string;
+}
 
 interface ChartAreaProps {
   data: TemperatureDataPoint[];
   channels: ChannelConfig[];
   displayMode: ChartDisplayMode;
   isDark?: boolean;
+  timeMapping: TimeMapping[];
 }
 
 const ChartArea = forwardRef<any, ChartAreaProps>(({
   data,
   channels,
   displayMode,
-  isDark = false
+  isDark = false,
+  timeMapping
 }, ref) => {
   const chartRef = useRef<ReactECharts>(null);
 
   useImperativeHandle(ref, () => chartRef.current);
 
-  const option = createChartOption(data, channels, displayMode, isDark);
+  const option = createChartOption(data, channels, displayMode, isDark, timeMapping);
+
+  // Force chart update when channels change (visibility/color)
+  useEffect(() => {
+    if (chartRef.current) {
+      const chartInstance = chartRef.current.getEchartsInstance();
+      if (chartInstance) {
+        chartInstance.setOption(option, true); // true = replace completely
+      }
+    }
+  }, [channels, displayMode, isDark, data, timeMapping]);
 
   return (
     <div style={{ width: '100%', height: '100%', padding: '16px' }}>

@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { parseCSV } from './lib/csvParser';
-import type { TemperatureDataPoint, CSVValidationError } from './types/csv';
+import type { TemperatureDataPoint, CSVValidationError, TimeMapping } from './types/csv';
+import type { ChartDisplayMode } from './types';
+import ChartArea from './components/ChartArea';
 
 interface Channel {
   id: number;
@@ -18,16 +20,21 @@ const DEFAULT_COLORS = [
 function App() {
   const [isDark, setIsDark] = useState(false);
   const [data, setData] = useState<TemperatureDataPoint[]>([]);
+  const [timeMapping, setTimeMapping] = useState<TimeMapping[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [currentFile, setCurrentFile] = useState<string>('');
   const [error, setError] = useState<CSVValidationError | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [chartMode, setChartMode] = useState<ChartDisplayMode>({ type: 'both' });
+  const [jumpToTime, setJumpToTime] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const chartRef = useRef<any>(null);
 
   // Apply theme to html element
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
   }, [isDark]);
+
 
   // Generate channels from data
   useEffect(() => {
@@ -60,9 +67,11 @@ function App() {
     if (result.error) {
       setError(result.error);
       setData([]);
+      setTimeMapping([]);
       setCurrentFile('');
     } else {
       setData(result.data);
+      setTimeMapping(result.timeMapping);
       setCurrentFile(filename);
       setError(null);
     }
@@ -143,10 +152,248 @@ function App() {
     };
   };
 
+  // Convert Channel[] to ChannelConfig[] for chart component
+  const chartChannels = channels.map(ch => ({
+    id: ch.id,
+    label: ch.label,
+    visible: ch.visible,
+    color: ch.color
+  }));
+
+  const handleResetZoom = () => {
+    chartRef.current?.getEchartsInstance()?.dispatchAction({
+      type: 'dataZoom',
+      start: 0,
+      end: 100
+    });
+  };
+
+  const handleChartModeChange = (mode: string) => {
+    setChartMode({ type: mode as 'scatter' | 'line' | 'both' });
+  };
+
+  const handleExport = (format: 'png' | 'jpg' = 'png') => {
+    if (!chartRef.current) return;
+
+    const chartInstance = chartRef.current.getEchartsInstance();
+    if (chartInstance) {
+      try {
+        const dataURL = chartInstance.getDataURL({
+          type: format,
+          pixelRatio: 2,
+          backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF'
+        });
+
+        const link = document.createElement('a');
+        const timestamp = new Date().toISOString().split('T')[0];
+        link.download = `temperature-chart-${timestamp}.${format}`;
+        link.href = dataURL;
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (error) {
+        console.error('Export error:', error);
+      }
+    }
+  };
+
+  const handleExportCSV = () => {
+    if (!data.length || !timeMapping.length) return;
+
+    // Create CSV content with visible channels only
+    const visibleChannels = chartChannels.filter(ch => ch.visible);
+    const headers = ['Time', ...visibleChannels.map(ch => ch.label)];
+    
+    const csvRows = [headers.join(',')];
+    
+    // Group data by time index
+    const dataByTime = new Map();
+    data.forEach(point => {
+      if (!dataByTime.has(point.time)) {
+        dataByTime.set(point.time, {});
+      }
+      dataByTime.get(point.time)[point.channel] = point.temperature;
+    });
+
+    // Generate CSV rows
+    timeMapping.forEach(tm => {
+      if (dataByTime.has(tm.index)) {
+        const timeData = dataByTime.get(tm.index);
+        const row = [tm.displayTime];
+        visibleChannels.forEach(ch => {
+          row.push(timeData[ch.id] || '');
+        });
+        csvRows.push(row.join(','));
+      }
+    });
+
+    // Download CSV
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const timestamp = new Date().toISOString().split('T')[0];
+    link.download = `temperature-data-${timestamp}.csv`;
+    link.href = url;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleSaveSession = () => {
+    if (!data.length) return;
+
+    // Get current zoom state from chart
+    let zoomState = null;
+    if (chartRef.current) {
+      const chartInstance = chartRef.current.getEchartsInstance();
+      if (chartInstance) {
+        const option = chartInstance.getOption();
+        zoomState = option.dataZoom;
+      }
+    }
+
+    // Create session data
+    const sessionData = {
+      version: '1.0',
+      timestamp: new Date().toISOString(),
+      filename: currentFile,
+      data: data,
+      timeMapping: timeMapping,
+      channels: channels,
+      chartMode: chartMode,
+      isDark: isDark,
+      zoomState: zoomState
+    };
+
+    // Download session file
+    const sessionContent = JSON.stringify(sessionData, null, 2);
+    const blob = new Blob([sessionContent], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const timestamp = new Date().toISOString().split('T')[0];
+    const baseName = currentFile.replace('.csv', '') || 'temperature-session';
+    link.download = `${baseName}-${timestamp}.tdproj`;
+    link.href = url;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleLoadSession = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.tdproj';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const sessionData = JSON.parse(e.target?.result as string);
+            
+            // Validate session data
+            if (!sessionData.data || !sessionData.timeMapping || !sessionData.channels) {
+              throw new Error('Invalid session file format');
+            }
+
+            // Restore session state
+            setData(sessionData.data);
+            setTimeMapping(sessionData.timeMapping);
+            setChannels(sessionData.channels);
+            setCurrentFile(sessionData.filename || 'Restored Session');
+            setChartMode(sessionData.chartMode || { type: 'both' });
+            setIsDark(sessionData.isDark || false);
+            setError(null);
+
+            // Restore zoom state after chart renders
+            if (sessionData.zoomState && chartRef.current) {
+              setTimeout(() => {
+                const chartInstance = chartRef.current?.getEchartsInstance();
+                if (chartInstance && sessionData.zoomState) {
+                  chartInstance.setOption({ dataZoom: sessionData.zoomState });
+                }
+              }, 100);
+            }
+          } catch (error) {
+            setError({
+              type: 'invalidValue',
+              message: 'Failed to load session file. Please check the file format.'
+            });
+          }
+        };
+        reader.readAsText(file);
+      }
+    };
+    input.click();
+  };
+
+  const handleJumpToTime = () => {
+    if (!jumpToTime || !chartRef.current || timeMapping.length === 0) return;
+
+    // Find the closest time index based on user input
+    let targetIndex = -1;
+    
+    // Check if input looks like time format (HH:MM or H:MM)
+    if (jumpToTime.includes(':')) {
+      const mapping = timeMapping.find(tm => tm.displayTime === jumpToTime);
+      if (mapping) {
+        targetIndex = mapping.index;
+      }
+    } else {
+      // Treat as time like "11:05" if user enters "1105" or similar
+      const timeNum = parseInt(jumpToTime);
+      if (timeNum >= 0 && timeNum <= 2359) {
+        const hours = Math.floor(timeNum / 100);
+        const minutes = timeNum % 100;
+        const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+        const mapping = timeMapping.find(tm => tm.displayTime === timeStr);
+        if (mapping) {
+          targetIndex = mapping.index;
+        }
+      }
+    }
+
+    // If exact match not found, find closest time
+    if (targetIndex === -1 && jumpToTime.includes(':')) {
+      const [inputHours, inputMinutes] = jumpToTime.split(':').map(s => parseInt(s));
+      if (!isNaN(inputHours) && !isNaN(inputMinutes)) {
+        const inputTotalMinutes = inputHours * 60 + inputMinutes;
+        let closestDistance = Infinity;
+        
+        timeMapping.forEach(tm => {
+          const [hours, minutes] = tm.displayTime.split(':').map(s => parseInt(s));
+          const totalMinutes = hours * 60 + minutes;
+          const distance = Math.abs(totalMinutes - inputTotalMinutes);
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            targetIndex = tm.index;
+          }
+        });
+      }
+    }
+
+    // Navigate to the target time
+    if (targetIndex !== -1) {
+      const chartInstance = chartRef.current?.getEchartsInstance();
+      if (chartInstance) {
+        // Center the view around target time with some context
+        const contextRange = Math.max(5, Math.round((timeMapping.length - 1) * 0.1));
+        const startIndex = Math.max(0, targetIndex - contextRange);
+        const endIndex = Math.min(timeMapping.length - 1, targetIndex + contextRange);
+        
+        chartInstance.dispatchAction({
+          type: 'dataZoom',
+          start: (startIndex / (timeMapping.length - 1)) * 100,
+          end: (endIndex / (timeMapping.length - 1)) * 100
+        });
+      }
+    }
+  };
+
   const activeChannels = channels.filter(ch => ch.dataCount > 0);
 
   return (
-    <div className="h-screen flex flex-col bg-white dark:bg-gray-900 text-gray-900 dark:text-white transition-colors">
+    <div className={`h-screen flex flex-col text-gray-900 dark:text-white transition-colors ${isDark ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900' : 'bg-gradient-to-br from-blue-50 via-white to-indigo-50'}`}>
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -157,26 +404,31 @@ function App() {
       />
 
       {/* Top Bar */}
-      <header className="h-12 px-4 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3 flex-shrink-0">
+      <header className={`h-12 px-4 border-b flex items-center gap-3 flex-shrink-0 animate-slide-up ${isDark ? 'glass-panel-dark' : 'glass-panel'}`}>
         <button 
           onClick={handleFileInput}
-          className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          className="btn-glass hover-lift"
         >
           Import CSV
         </button>
         <button 
           disabled={!currentFile}
-          className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={() => handleExport('png')}
+          className="btn-glass hover-lift"
         >
-          Export
+          Export PNG
         </button>
         <button 
           disabled={!currentFile}
-          className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={handleSaveSession}
+          className="btn-glass hover-lift"
         >
           Save Session
         </button>
-        <button className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+        <button 
+          onClick={handleLoadSession}
+          className="btn-glass hover-lift"
+        >
           Load Session
         </button>
         
@@ -188,7 +440,7 @@ function App() {
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar */}
-        <aside className="w-72 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-4 overflow-y-auto flex-shrink-0">
+        <aside className={`w-72 border-r p-4 overflow-y-auto flex-shrink-0 animate-slide-up ${isDark ? 'glass-panel-dark' : 'glass-panel'}`}>
           <h3 className="text-sm font-semibold mb-4 text-gray-700 dark:text-gray-300">
             Channels ({activeChannels.length}/12)
           </h3>
@@ -197,7 +449,7 @@ function App() {
             activeChannels.map((channel) => {
               const stats = calculateStats(channel.id);
               return (
-                <div key={channel.id} className="flex items-center gap-3 p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 mb-2">
+                <div key={channel.id} className={`flex items-center gap-3 p-3 rounded-lg mb-3 transition-all duration-200 hover-lift animate-fade-in ${isDark ? 'glass-dark' : 'glass'}`}>
                   <input 
                     type="checkbox" 
                     className="w-4 h-4" 
@@ -230,63 +482,63 @@ function App() {
 
         {/* Chart Area */}
         <main 
-          className="flex-1 p-4 bg-white dark:bg-gray-900"
+          className="flex-1 relative animate-fade-in"
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          <div className={`h-full border-2 border-dashed rounded-lg flex items-center justify-center transition-colors ${
-            dragActive 
-              ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
-              : 'border-gray-300 dark:border-gray-600'
-          }`}>
-            <div className="text-center text-gray-500 dark:text-gray-400">
-              {data.length > 0 ? (
-                <>
-                  <div className="text-4xl mb-4">📊</div>
-                  <div className="text-lg font-medium mb-2">
-                    Temperature Chart ({data.length} data points)
-                  </div>
-                  <div className="text-sm">
-                    {activeChannels.filter(ch => ch.visible).length} channels visible
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="text-4xl mb-4">📊</div>
-                  <div className="text-lg font-medium mb-2">Temperature Chart</div>
-                  <div className="text-sm">Import a CSV file to display temperature data</div>
-                  <div className="text-xs mt-2 opacity-75">
-                    {dragActive ? 'Drop CSV file here' : 'Drag & drop CSV files here or click Import'}
-                  </div>
-                </>
-              )}
+          {data.length > 0 ? (
+            <ChartArea
+              ref={chartRef}
+              data={data}
+              channels={chartChannels}
+              displayMode={chartMode}
+              isDark={isDark}
+              timeMapping={timeMapping}
+            />
+          ) : (
+            <div className={`h-full m-4 border-2 border-dashed rounded-lg flex items-center justify-center transition-colors ${
+              dragActive 
+                ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                : 'border-gray-300 dark:border-gray-600'
+            }`}>
+              <div className="text-center text-gray-500 dark:text-gray-400">
+                <div className="text-4xl mb-4">📊</div>
+                <div className="text-lg font-medium mb-2">Temperature Chart</div>
+                <div className="text-sm">Import a CSV file to display temperature data</div>
+                <div className="text-xs mt-2 opacity-75">
+                  {dragActive ? 'Drop CSV file here' : 'Drag & drop CSV files here or click Import'}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </main>
       </div>
 
       {/* Bottom Bar */}
-      <footer className="h-11 px-4 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex items-center gap-3 flex-shrink-0">
+      <footer className={`h-11 px-4 border-t flex items-center gap-3 flex-shrink-0 animate-slide-up ${isDark ? 'glass-panel-dark' : 'glass-panel'}`}>
         <button 
           disabled={!data.length}
-          className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={handleResetZoom}
+          className="btn-glass text-xs px-2 py-1 hover-lift"
         >
           Reset Zoom
         </button>
         
         <select 
           disabled={!data.length}
-          className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          value={chartMode.type === 'both' ? 'both' : chartMode.type}
+          onChange={(e) => handleChartModeChange(e.target.value)}
+          className={`px-2 py-1 text-xs rounded-lg transition-all duration-200 backdrop-blur-sm disabled:opacity-50 ${isDark ? 'glass-dark' : 'glass'}`}
         >
-          <option>Line + Scatter</option>
-          <option>Line Only</option>
-          <option>Scatter Only</option>
+          <option value="both">Line + Scatter</option>
+          <option value="line">Line Only</option>
+          <option value="scatter">Scatter Only</option>
         </select>
         
         <button 
           onClick={() => setIsDark(!isDark)}
-          className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          className="btn-glass text-xs px-2 py-1 hover-lift"
         >
           {isDark ? '☀️ Light' : '🌙 Dark'} Mode
         </button>
@@ -294,14 +546,18 @@ function App() {
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-gray-500 dark:text-gray-400">Jump to:</span>
           <input 
-            type="number" 
-            placeholder="Time (s)"
+            type="text" 
+            placeholder="11:05"
             disabled={!data.length}
-            className="w-20 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white disabled:opacity-50"
+            value={jumpToTime}
+            onChange={(e) => setJumpToTime(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleJumpToTime()}
+            className={`w-16 px-2 py-1 text-xs rounded-lg transition-all duration-200 backdrop-blur-sm disabled:opacity-50 text-gray-900 dark:text-white ${isDark ? 'glass-dark' : 'glass'}`}
           />
           <button 
-            disabled={!data.length}
-            className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!data.length || !jumpToTime}
+            onClick={handleJumpToTime}
+            className="btn-glass text-xs px-2 py-1 hover-lift"
           >
             Go
           </button>
@@ -310,8 +566,8 @@ function App() {
 
       {/* Error Dialog */}
       {error && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-md mx-4 shadow-xl">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-fade-in">
+          <div className={`p-6 rounded-xl max-w-md mx-4 animate-scale-in ${isDark ? 'glass-panel-dark' : 'glass-panel'}`}>
             <h3 className="text-lg font-semibold mb-3 text-red-600 dark:text-red-400">
               CSV Import Error
             </h3>
@@ -325,7 +581,7 @@ function App() {
             )}
             <button 
               onClick={() => setError(null)}
-              className="w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
+              className="btn-glass w-full px-4 py-2 hover-lift"
             >
               OK
             </button>
