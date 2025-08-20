@@ -12,13 +12,38 @@
   "app": {
     "windows": [
       {
-        "title": "temp-chart",
-        "width": 800,
-        "height": 600
+        "title": "Temperature Chart App",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600
       }
     ],
     "security": {
       "csp": null
+    }
+  },
+  "plugins": {
+    "dialog": {
+      "all": true,
+      "ask": true,
+      "confirm": true,
+      "message": true,
+      "open": true,
+      "save": true
+    },
+    "fs": {
+      "all": false,
+      "readFile": true,
+      "writeFile": true,
+      "readDir": false,
+      "copyFile": false,
+      "createDir": false,
+      "removeDir": false,
+      "removeFile": false,
+      "renameFile": false,
+      "exists": true,
+      "scope": ["$DOWNLOAD/*", "$DESKTOP/*", "$DOCUMENT/*"]
     }
   },
   "bundle": {

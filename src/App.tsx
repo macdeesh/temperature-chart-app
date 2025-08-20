@@ -3,6 +3,8 @@ import { parseCSV } from './lib/csvParser';
 import type { TemperatureDataPoint, CSVValidationError, TimeMapping } from './types/csv';
 import type { ChartDisplayMode } from './types';
 import ChartArea from './components/ChartArea';
+import { save, open } from '@tauri-apps/plugin-dialog';
+import { writeTextFile, writeFile, readTextFile } from '@tauri-apps/plugin-fs';
 
 interface Channel {
   id: number;
@@ -172,7 +174,7 @@ function App() {
     setChartMode({ type: mode as 'scatter' | 'line' | 'both' });
   };
 
-  const handleExport = (format: 'png' | 'jpg' = 'png') => {
+  const handleExport = async (format: 'png' | 'jpg' = 'png') => {
     if (!chartRef.current) return;
 
     const chartInstance = chartRef.current.getEchartsInstance();
@@ -184,147 +186,136 @@ function App() {
           backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF'
         });
 
-        const link = document.createElement('a');
         const timestamp = new Date().toISOString().split('T')[0];
-        link.download = `temperature-chart-${timestamp}.${format}`;
-        link.href = dataURL;
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        const defaultName = `temperature-chart-${timestamp}.${format}`;
+
+        // Use Tauri's native save dialog
+        const filePath = await save({
+          defaultPath: defaultName,
+          filters: [{
+            name: `${format.toUpperCase()} Image`,
+            extensions: [format]
+          }]
+        });
+
+        if (filePath) {
+          // Convert data URL to binary data
+          const base64Data = dataURL.split(',')[1];
+          const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+          
+          // Write file using Tauri's filesystem API
+          await writeFile(filePath, binaryData);
+        }
       } catch (error) {
         console.error('Export error:', error);
+        setError({
+          type: 'invalidValue',
+          message: 'Failed to export chart. Please try again.'
+        });
       }
     }
   };
 
-  const handleExportCSV = () => {
-    if (!data.length || !timeMapping.length) return;
 
-    // Create CSV content with visible channels only
-    const visibleChannels = chartChannels.filter(ch => ch.visible);
-    const headers = ['Time', ...visibleChannels.map(ch => ch.label)];
-    
-    const csvRows = [headers.join(',')];
-    
-    // Group data by time index
-    const dataByTime = new Map();
-    data.forEach(point => {
-      if (!dataByTime.has(point.time)) {
-        dataByTime.set(point.time, {});
-      }
-      dataByTime.get(point.time)[point.channel] = point.temperature;
-    });
-
-    // Generate CSV rows
-    timeMapping.forEach(tm => {
-      if (dataByTime.has(tm.index)) {
-        const timeData = dataByTime.get(tm.index);
-        const row = [tm.displayTime];
-        visibleChannels.forEach(ch => {
-          row.push(timeData[ch.id] || '');
-        });
-        csvRows.push(row.join(','));
-      }
-    });
-
-    // Download CSV
-    const csvContent = csvRows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    const timestamp = new Date().toISOString().split('T')[0];
-    link.download = `temperature-data-${timestamp}.csv`;
-    link.href = url;
-    link.click();
-    window.URL.revokeObjectURL(url);
-  };
-
-  const handleSaveSession = () => {
+  const handleSaveSession = async () => {
     if (!data.length) return;
 
-    // Get current zoom state from chart
-    let zoomState = null;
-    if (chartRef.current) {
-      const chartInstance = chartRef.current.getEchartsInstance();
-      if (chartInstance) {
-        const option = chartInstance.getOption();
-        zoomState = option.dataZoom;
+    try {
+      // Get current zoom state from chart
+      let zoomState = null;
+      if (chartRef.current) {
+        const chartInstance = chartRef.current.getEchartsInstance();
+        if (chartInstance) {
+          const option = chartInstance.getOption();
+          zoomState = option.dataZoom;
+        }
       }
+
+      // Create session data
+      const sessionData = {
+        version: '1.0',
+        timestamp: new Date().toISOString(),
+        filename: currentFile,
+        data: data,
+        timeMapping: timeMapping,
+        channels: channels,
+        chartMode: chartMode,
+        isDark: isDark,
+        zoomState: zoomState
+      };
+
+      const timestamp = new Date().toISOString().split('T')[0];
+      const baseName = currentFile.replace('.csv', '') || 'temperature-session';
+      const defaultName = `${baseName}-${timestamp}.tdproj`;
+
+      // Use Tauri's native save dialog
+      const filePath = await save({
+        defaultPath: defaultName,
+        filters: [{
+          name: 'Temperature Chart Project',
+          extensions: ['tdproj']
+        }]
+      });
+
+      if (filePath) {
+        const sessionContent = JSON.stringify(sessionData, null, 2);
+        await writeTextFile(filePath, sessionContent);
+      }
+    } catch (error) {
+      console.error('Save session error:', error);
+      setError({
+        type: 'invalidValue',
+        message: 'Failed to save session. Please try again.'
+      });
     }
-
-    // Create session data
-    const sessionData = {
-      version: '1.0',
-      timestamp: new Date().toISOString(),
-      filename: currentFile,
-      data: data,
-      timeMapping: timeMapping,
-      channels: channels,
-      chartMode: chartMode,
-      isDark: isDark,
-      zoomState: zoomState
-    };
-
-    // Download session file
-    const sessionContent = JSON.stringify(sessionData, null, 2);
-    const blob = new Blob([sessionContent], { type: 'application/json' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    const timestamp = new Date().toISOString().split('T')[0];
-    const baseName = currentFile.replace('.csv', '') || 'temperature-session';
-    link.download = `${baseName}-${timestamp}.tdproj`;
-    link.href = url;
-    link.click();
-    window.URL.revokeObjectURL(url);
   };
 
-  const handleLoadSession = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.tdproj';
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          try {
-            const sessionData = JSON.parse(e.target?.result as string);
-            
-            // Validate session data
-            if (!sessionData.data || !sessionData.timeMapping || !sessionData.channels) {
-              throw new Error('Invalid session file format');
-            }
+  const handleLoadSession = async () => {
+    try {
+      // Use Tauri's native open dialog
+      const filePath = await open({
+        filters: [{
+          name: 'Temperature Chart Project',
+          extensions: ['tdproj']
+        }]
+      });
 
-            // Restore session state
-            setData(sessionData.data);
-            setTimeMapping(sessionData.timeMapping);
-            setChannels(sessionData.channels);
-            setCurrentFile(sessionData.filename || 'Restored Session');
-            setChartMode(sessionData.chartMode || { type: 'both' });
-            setIsDark(sessionData.isDark || false);
-            setError(null);
+      if (filePath) {
+        // Read file using Tauri's filesystem API
+        const sessionContent = await readTextFile(filePath);
+        const sessionData = JSON.parse(sessionContent);
+        
+        // Validate session data
+        if (!sessionData.data || !sessionData.timeMapping || !sessionData.channels) {
+          throw new Error('Invalid session file format');
+        }
 
-            // Restore zoom state after chart renders
-            if (sessionData.zoomState && chartRef.current) {
-              setTimeout(() => {
-                const chartInstance = chartRef.current?.getEchartsInstance();
-                if (chartInstance && sessionData.zoomState) {
-                  chartInstance.setOption({ dataZoom: sessionData.zoomState });
-                }
-              }, 100);
+        // Restore session state
+        setData(sessionData.data);
+        setTimeMapping(sessionData.timeMapping);
+        setChannels(sessionData.channels);
+        setCurrentFile(sessionData.filename || 'Restored Session');
+        setChartMode(sessionData.chartMode || { type: 'both' });
+        setIsDark(sessionData.isDark || false);
+        setError(null);
+
+        // Restore zoom state after chart renders
+        if (sessionData.zoomState && chartRef.current) {
+          setTimeout(() => {
+            const chartInstance = chartRef.current?.getEchartsInstance();
+            if (chartInstance && sessionData.zoomState) {
+              chartInstance.setOption({ dataZoom: sessionData.zoomState });
             }
-          } catch (error) {
-            setError({
-              type: 'invalidValue',
-              message: 'Failed to load session file. Please check the file format.'
-            });
-          }
-        };
-        reader.readAsText(file);
+          }, 100);
+        }
       }
-    };
-    input.click();
+    } catch (error) {
+      console.error('Load session error:', error);
+      setError({
+        type: 'invalidValue',
+        message: 'Failed to load session file. Please check the file format.'
+      });
+    }
   };
 
   const handleJumpToTime = () => {
