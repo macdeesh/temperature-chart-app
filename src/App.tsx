@@ -5,6 +5,7 @@ import type { ChartDisplayMode } from './types';
 import ChartArea from './components/ChartArea';
 import { save, open } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, writeFile, readTextFile } from '@tauri-apps/plugin-fs';
+import { listen } from '@tauri-apps/api/event';
 
 interface Channel {
   id: number;
@@ -36,6 +37,55 @@ function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
   }, [isDark]);
+
+  // Setup Tauri file drop event listener
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    
+    const setupFileDropListener = async () => {
+      try {
+        console.log('Setting up file drop listener...');
+        unlisten = await listen('tauri://file-drop', (event) => {
+          console.log('File drop event received:', event);
+          const files = event.payload as string[];
+          console.log('Dropped files:', files);
+          
+          const csvFile = files.find(file => file.toLowerCase().endsWith('.csv'));
+          console.log('CSV file found:', csvFile);
+          
+          if (csvFile) {
+            console.log('Reading CSV file:', csvFile);
+            // Read the dropped CSV file
+            readTextFile(csvFile).then(content => {
+              console.log('File content loaded, length:', content.length);
+              const filename = csvFile.split('/').pop() || 'dropped-file.csv';
+              handleCSVContent(content, filename);
+            }).catch(error => {
+              console.error('Failed to read dropped file:', error);
+              setError({
+                type: 'invalidValue',
+                message: 'Failed to read the dropped file.'
+              });
+            });
+          } else {
+            console.log('No CSV file found in dropped files');
+          }
+        });
+        console.log('File drop listener setup complete');
+      } catch (error) {
+        console.error('Failed to setup file drop listener:', error);
+      }
+    };
+    
+    setupFileDropListener();
+    
+    return () => {
+      if (unlisten) {
+        console.log('Cleaning up file drop listener');
+        unlisten();
+      }
+    };
+  }, []);
 
 
   // Generate channels from data
@@ -110,19 +160,30 @@ function App() {
   };
 
   const handleDrop = (e: React.DragEvent) => {
+    console.log('Browser drag drop event:', e);
     e.preventDefault();
     setDragActive(false);
     
     const files = Array.from(e.dataTransfer.files);
+    console.log('Dropped files via browser API:', files);
+    
     const csvFile = files.find(file => file.name.toLowerCase().endsWith('.csv'));
+    console.log('CSV file found via browser API:', csvFile);
     
     if (csvFile) {
+      console.log('Reading file with FileReader...');
       const reader = new FileReader();
       reader.onload = (e) => {
         const content = e.target?.result as string;
+        console.log('File content loaded via FileReader, length:', content.length);
         handleCSVContent(content, csvFile.name);
       };
+      reader.onerror = (e) => {
+        console.error('FileReader error:', e);
+      };
       reader.readAsText(csvFile);
+    } else {
+      console.log('No CSV file found in browser drop');
     }
   };
 
@@ -175,44 +236,77 @@ function App() {
   };
 
   const handleExport = async (format: 'png' | 'jpg' = 'png') => {
-    if (!chartRef.current) return;
+    console.log('Export started, chartRef:', chartRef.current);
+    
+    if (!chartRef.current) {
+      console.error('No chart reference available');
+      setError({
+        type: 'invalidValue',
+        message: 'Chart not ready. Please try again.'
+      });
+      return;
+    }
 
     const chartInstance = chartRef.current.getEchartsInstance();
-    if (chartInstance) {
-      try {
-        const dataURL = chartInstance.getDataURL({
-          type: format,
-          pixelRatio: 2,
-          backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF'
-        });
+    console.log('Chart instance:', chartInstance);
+    
+    if (!chartInstance) {
+      console.error('No chart instance available');
+      setError({
+        type: 'invalidValue',
+        message: 'Chart not loaded. Please try again.'
+      });
+      return;
+    }
 
-        const timestamp = new Date().toISOString().split('T')[0];
-        const defaultName = `temperature-chart-${timestamp}.${format}`;
+    try {
+      // Wait a moment for chart to be fully rendered
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const dataURL = chartInstance.getDataURL({
+        type: format,
+        pixelRatio: 2,
+        backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF'
+      });
 
-        // Use Tauri's native save dialog
-        const filePath = await save({
-          defaultPath: defaultName,
-          filters: [{
-            name: `${format.toUpperCase()} Image`,
-            extensions: [format]
-          }]
-        });
+      console.log('DataURL generated, length:', dataURL.length);
 
-        if (filePath) {
-          // Convert data URL to binary data
-          const base64Data = dataURL.split(',')[1];
-          const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-          
-          // Write file using Tauri's filesystem API
-          await writeFile(filePath, binaryData);
-        }
-      } catch (error) {
-        console.error('Export error:', error);
-        setError({
-          type: 'invalidValue',
-          message: 'Failed to export chart. Please try again.'
-        });
+      if (!dataURL || dataURL === 'data:,') {
+        throw new Error('Failed to generate chart image');
       }
+
+      const timestamp = new Date().toISOString().split('T')[0];
+      const defaultName = `temperature-chart-${timestamp}.${format}`;
+
+      // Use Tauri's native save dialog
+      const filePath = await save({
+        defaultPath: defaultName,
+        filters: [{
+          name: `${format.toUpperCase()} Image`,
+          extensions: [format]
+        }]
+      });
+
+      console.log('Save dialog result:', filePath);
+
+      if (filePath) {
+        // Convert data URL to binary data
+        const base64Data = dataURL.split(',')[1];
+        const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+        
+        console.log('Writing file, data size:', binaryData.length);
+        
+        // Write file using Tauri's filesystem API
+        await writeFile(filePath, binaryData);
+        
+        console.log('Export completed successfully');
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      setError({
+        type: 'invalidValue',
+        message: `Failed to export chart: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
     }
   };
 
