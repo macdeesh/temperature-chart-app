@@ -1,11 +1,40 @@
 // FILE: src/lib/csvParser.ts
-// CSV parser with strict validation per PRD - auto-detect delimiter, validate ranges
-import type { TemperatureDataPoint, CSVValidationError, CSVParseResult } from '../types/csv';
+// Enhanced CSV parser for real-world datetime format with time mapping
+import type { TemperatureDataPoint, CSVValidationError, CSVParseResult, TimeMapping } from '../types/csv';
 
 const MAX_ROWS = 1000; // "hundreds of lines OK" per PRD
 const TEMP_MIN = -100.0;
 const TEMP_MAX = 1400.0;
 const MAX_CHANNELS = 12;
+
+// Parse datetime formats like "15/07/2021 10:38" and extract time
+function parseDateTime(dateTimeStr: string): string | null {
+  try {
+    // Handle formats like "15/07/2021 10:38" or "15/07/2021 10:38:00"
+    const parts = dateTimeStr.trim().split(' ');
+    if (parts.length < 2) return null;
+    
+    const timePart = parts[1]; // "10:38" or "10:38:00"
+    const timeComponents = timePart.split(':');
+    
+    if (timeComponents.length >= 2) {
+      const hours = timeComponents[0].padStart(2, '0');
+      const minutes = timeComponents[1].padStart(2, '0');
+      return `${hours}:${minutes}`;
+    }
+    
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Check if a string represents a valid temperature number
+function isValidTemperature(value: string): boolean {
+  if (!value || value.trim() === '') return false;
+  const num = Number(value.trim());
+  return !isNaN(num) && num >= TEMP_MIN && num <= TEMP_MAX;
+}
 
 export function parseCSV(content: string): CSVParseResult {
   const lines = content.trim().split('\n').filter(line => line.trim());
@@ -14,6 +43,7 @@ export function parseCSV(content: string): CSVParseResult {
   if (lines.length > MAX_ROWS) {
     return {
       data: [],
+      timeMapping: [],
       error: { 
         type: 'tooLarge', 
         message: `File too large. Maximum supported rows: ${MAX_ROWS}` 
@@ -24,6 +54,7 @@ export function parseCSV(content: string): CSVParseResult {
   if (lines.length === 0) {
     return {
       data: [],
+      timeMapping: [],
       error: {
         type: 'invalidValue',
         message: 'Empty file'
@@ -44,6 +75,7 @@ export function parseCSV(content: string): CSVParseResult {
   } else {
     return {
       data: [],
+      timeMapping: [],
       error: { 
         type: 'delimiter', 
         message: 'Invalid delimiter, expected ; or ,' 
@@ -51,48 +83,41 @@ export function parseCSV(content: string): CSVParseResult {
     };
   }
 
-  // Parse first line to detect header and validate column count
+  // Parse first line to validate basic structure
   const firstRowCols = firstLine.split(delimiter).map(col => col.trim());
-  const expectedMinCols = 2; // time + at least 1 channel
-  const expectedMaxCols = MAX_CHANNELS + 1; // time + up to 12 channels
+  const expectedMinCols = 2; // datetime + at least 1 data column
+  const expectedMaxCols = MAX_CHANNELS + 1; // datetime + up to 12 channels
   
-  if (firstRowCols.length < expectedMinCols || firstRowCols.length > expectedMaxCols) {
+  if (firstRowCols.length < expectedMinCols) {
     return {
       data: [],
+      timeMapping: [],
       error: { 
         type: 'columnCount', 
-        message: `Expected [time + up to ${MAX_CHANNELS} channels], found ${firstRowCols.length}` 
+        message: `Expected at least ${expectedMinCols} columns, found ${firstRowCols.length}` 
       }
     };
   }
 
-  // Auto-detect header row (Italian: Tempo [s];CH1;CH2;... or similar)
-  let startRow = 0;
-  const firstCol = firstRowCols[0].toLowerCase();
-  const hasHeader = isNaN(Number(firstRowCols[0])) || 
-                   firstCol.includes('tempo') || 
-                   firstCol.includes('time') ||
-                   firstCol.includes('sec');
-  
-  if (hasHeader) {
-    startRow = 1;
-  }
-
-  // Validate we have data rows
-  if (startRow >= lines.length) {
+  // Check if first column looks like datetime
+  const firstColSample = firstRowCols[0];
+  const parsedTime = parseDateTime(firstColSample);
+  if (!parsedTime) {
     return {
       data: [],
+      timeMapping: [],
       error: {
-        type: 'invalidValue',
-        message: 'No data rows found'
+        type: 'dateFormat',
+        message: 'First column must contain datetime format (e.g., "15/07/2021 10:38")'
       }
     };
   }
 
   const data: TemperatureDataPoint[] = [];
+  const timeMapping: TimeMapping[] = [];
   const expectedColCount = firstRowCols.length;
   
-  for (let i = startRow; i < lines.length; i++) {
+  for (let i = 0; i < lines.length; i++) {
     const row = lines[i].trim();
     if (!row) continue;
     
@@ -102,6 +127,7 @@ export function parseCSV(content: string): CSVParseResult {
     if (cols.length !== expectedColCount) {
       return {
         data: [],
+        timeMapping: [],
         error: { 
           type: 'columnCount',
           message: `Expected ${expectedColCount} columns, found ${cols.length}`,
@@ -110,51 +136,69 @@ export function parseCSV(content: string): CSVParseResult {
       };
     }
 
-    // Parse time (first column)
-    const timeStr = cols[0];
-    const time = Number(timeStr);
-    if (isNaN(time) || time < 0) {
+    // Parse datetime from first column
+    const dateTimeStr = cols[0];
+    const displayTime = parseDateTime(dateTimeStr);
+    
+    if (!displayTime) {
       return {
         data: [],
+        timeMapping: [],
         error: { 
-          type: 'invalidValue',
-          message: `Invalid time value in row ${i + 1}, column 1`,
+          type: 'dateFormat',
+          message: `Invalid datetime format in row ${i + 1}, column 1`,
           row: i + 1,
           column: 1
         }
       };
     }
 
-    // Parse temperature channels (remaining columns)
-    for (let j = 1; j < cols.length; j++) {
-      const tempStr = cols[j];
-      if (!tempStr || tempStr === '') continue; // Skip empty values
-      
-      const temp = Number(tempStr);
-      if (isNaN(temp)) {
-        return {
-          data: [],
-          error: { 
-            type: 'invalidValue',
-            message: `Invalid temperature value in row ${i + 1}, column ${j + 1}`,
-            row: i + 1,
-            column: j + 1
-          }
-        };
-      }
+    // Add time mapping entry
+    timeMapping.push({
+      index: i,
+      displayTime,
+      originalTime: dateTimeStr
+    });
 
-      // Filter temperatures outside valid range [-100.0, 1400.0]
-      if (temp >= TEMP_MIN && temp <= TEMP_MAX) {
-        data.push({
-          time: Math.round(time), // seconds only, no milliseconds
-          temperature: Math.round(temp * 10) / 10, // truncate to 1 decimal
-          channel: j // channels 1-12
-        });
+    // Parse data columns (skip first datetime column)
+    for (let j = 1; j < cols.length; j++) {
+      const valueStr = cols[j];
+      
+      // Skip non-numeric columns (like "Sotto Scala")
+      if (!isValidTemperature(valueStr)) {
+        continue;
       }
+      
+      const temp = Number(valueStr.trim());
+      
+      // Add valid temperature data point
+      data.push({
+        time: i, // sequential index for chart
+        temperature: Math.round(temp * 10) / 10, // truncate to 1 decimal
+        channel: j // channel number (1-based from column position)
+      });
     }
   }
 
-  return { data };
+  // Validate we found some temperature data
+  if (data.length === 0) {
+    return {
+      data: [],
+      timeMapping: [],
+      error: {
+        type: 'invalidValue',
+        message: 'No valid temperature data found in file'
+      }
+    };
+  }
+
+  return { data, timeMapping };
+}
+
+// Utility function to get display time from mapping
+export function getDisplayTime(timeIndex: number, timeMapping: TimeMapping[]): string {
+  const mapping = timeMapping.find(tm => tm.index === timeIndex);
+  return mapping ? mapping.displayTime : timeIndex.toString();
 }
 
 // Utility function to validate CSV format before parsing

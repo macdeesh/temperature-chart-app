@@ -1,5 +1,3 @@
-// FILE: src/App.tsx
-// Complete app with CSV import integration
 import { useState, useEffect, useRef } from 'react';
 import { parseCSV } from './lib/csvParser';
 import type { TemperatureDataPoint, CSVValidationError } from './types/csv';
