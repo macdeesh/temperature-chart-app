@@ -45,20 +45,22 @@ const ChartArea = forwardRef<any, ChartAreaProps>(({
   }, [channels, displayMode, isDark, data, timeMapping]);
 
   return (
-    <div style={{ width: '100%', height: '100%', padding: '16px' }}>
+    <div style={{ width: '100%', height: '100%' }}>
       <div 
         id="temperature-chart"
         style={{ 
           width: '100%', 
           height: '100%', 
-          border: '1px solid #E0E0E0',
-          borderRadius: '8px'
+          border: `1px solid ${isDark ? '#4B5563' : '#E0E0E0'}`,
+          borderRadius: '12px',
+          backgroundColor: isDark ? '#111827' : '#FFFFFF',
+          overflow: 'hidden'
         }}
       >
         <ReactECharts
           ref={chartRef}
           option={option}
-          style={{ width: '100%', height: '100%' }}
+          style={{ width: '100%', height: '100%', borderRadius: '12px' }}
           opts={{ renderer: 'canvas' }}
         />
       </div>

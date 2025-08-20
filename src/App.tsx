@@ -22,7 +22,7 @@ const DEFAULT_COLORS = [
 
 function App() {
   
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState(true);
   const [data, setData] = useState<TemperatureDataPoint[]>([]);
   const [timeMapping, setTimeMapping] = useState<TimeMapping[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -447,7 +447,7 @@ function App() {
   const activeChannels = channels.filter(ch => ch.dataCount > 0);
 
   return (
-    <div className={`h-screen flex flex-col text-gray-900 dark:text-white transition-colors ${isDark ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900' : 'bg-gradient-to-br from-blue-50 via-white to-indigo-50'}`}>
+    <div className={`h-screen flex flex-col text-gray-900 dark:text-white transition-colors p-3 ${isDark ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900' : 'bg-gradient-to-br from-blue-50 via-white to-indigo-50'}`}>
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -457,31 +457,33 @@ function App() {
         className="hidden"
       />
 
-      {/* Top Bar */}
-      <header className={`h-12 px-4 border-b flex items-center gap-3 flex-shrink-0 animate-slide-up ${isDark ? 'glass-panel-dark' : 'glass-panel'}`}>
+      {/* Main Container with Rounded Border */}
+      <div className="flex-1 flex flex-col rounded-xl overflow-hidden">
+        {/* Top Bar */}
+        <header className={`h-16 px-6 py-3 border-t border-l border-r border-b flex items-center gap-4 flex-shrink-0 animate-slide-up rounded-t-xl ${isDark ? 'glass-panel-dark border-gray-700' : 'glass-panel border-gray-200'}`}>
         <button 
           onClick={handleFileInput}
-          className="btn-glass hover-lift"
+          className="btn-glass hover-lift px-4 py-2"
         >
           Import CSV
         </button>
         <button 
           disabled={!currentFile}
           onClick={() => handleExport('png')}
-          className="btn-glass hover-lift"
+          className="btn-glass hover-lift px-4 py-2"
         >
           Export PNG
         </button>
         <button 
           disabled={!currentFile}
           onClick={handleSaveSession}
-          className="btn-glass hover-lift"
+          className="btn-glass hover-lift px-4 py-2"
         >
           Save Session
         </button>
         <button 
           onClick={handleLoadSession}
-          className="btn-glass hover-lift"
+          className="btn-glass hover-lift px-4 py-2"
         >
           Load Session
         </button>
@@ -501,10 +503,10 @@ function App() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar */}
-        <aside className={`w-72 border-r p-4 overflow-y-auto flex-shrink-0 animate-slide-up ${isDark ? 'glass-panel-dark' : 'glass-panel'}`}>
+        {/* Main Content */}
+        <div className={`flex flex-1 overflow-hidden border-l border-r ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+          {/* Left Sidebar */}
+          <aside className={`w-80 border-r p-6 overflow-y-auto flex-shrink-0 animate-slide-up ${isDark ? 'bg-gray-900/20 backdrop-blur-20 border-gray-700' : 'bg-white/95 backdrop-blur-20 border-gray-200'}`}>
           <h3 className="text-sm font-semibold mb-4 text-gray-700 dark:text-gray-300">
             Channels ({activeChannels.length}/12)
           </h3>
@@ -513,7 +515,7 @@ function App() {
             activeChannels.map((channel) => {
               const stats = calculateStats(channel.id);
               return (
-                <div key={channel.id} className={`flex items-center gap-3 p-3 rounded-lg mb-3 transition-all duration-200 hover-lift animate-fade-in ${isDark ? 'glass-dark' : 'glass'}`}>
+                <div key={channel.id} className={`flex items-center gap-4 p-4 rounded-xl mb-4 transition-all duration-200 hover-lift animate-fade-in ${isDark ? 'glass-dark' : 'glass'}`}>
                   <input 
                     type="checkbox" 
                     className="w-4 h-4" 
@@ -546,7 +548,7 @@ function App() {
 
         {/* Chart Area */}
         <main 
-          className="flex-1 relative animate-fade-in"
+          className="flex-1 relative animate-fade-in p-6"
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -561,7 +563,7 @@ function App() {
               timeMapping={timeMapping}
             />
           ) : (
-            <div className={`h-full m-4 border-2 border-dashed rounded-lg flex items-center justify-center transition-colors ${
+            <div className={`h-full border-2 border-dashed rounded-xl flex items-center justify-center transition-colors ${
               dragActive 
                 ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
                 : 'border-gray-300 dark:border-gray-600'
@@ -576,15 +578,15 @@ function App() {
               </div>
             </div>
           )}
-        </main>
-      </div>
+          </main>
+        </div>
 
-      {/* Bottom Bar */}
-      <footer className={`h-11 px-4 border-t flex items-center gap-3 flex-shrink-0 animate-slide-up ${isDark ? 'glass-panel-dark' : 'glass-panel'}`}>
+        {/* Bottom Bar */}
+        <footer className={`h-14 px-6 py-3 border-l border-r border-b border-t flex items-center gap-4 flex-shrink-0 animate-slide-up rounded-b-xl ${isDark ? 'glass-panel-dark border-gray-700' : 'glass-panel border-gray-200'}`}>
         <button 
           disabled={!data.length}
           onClick={handleResetZoom}
-          className="btn-glass text-xs px-2 py-1 hover-lift"
+          className="btn-glass text-xs px-3 py-2 hover-lift"
         >
           Reset Zoom
         </button>
@@ -602,7 +604,7 @@ function App() {
         
         <button 
           onClick={() => setIsDark(!isDark)}
-          className="btn-glass text-xs px-2 py-1 hover-lift"
+          className="btn-glass text-xs px-3 py-2 hover-lift"
         >
           {isDark ? '☀️ Light' : '🌙 Dark'} Mode
         </button>
@@ -616,17 +618,18 @@ function App() {
             value={jumpToTime}
             onChange={(e) => setJumpToTime(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleJumpToTime()}
-            className={`w-16 px-2 py-1 text-xs rounded-lg transition-all duration-200 backdrop-blur-sm disabled:opacity-50 text-gray-900 dark:text-white ${isDark ? 'glass-dark' : 'glass'}`}
+            className={`w-20 px-3 py-2 text-xs rounded-lg transition-all duration-200 backdrop-blur-sm disabled:opacity-50 text-gray-900 dark:text-white ${isDark ? 'glass-dark' : 'glass'}`}
           />
           <button 
             disabled={!data.length || !jumpToTime}
             onClick={handleJumpToTime}
-            className="btn-glass text-xs px-2 py-1 hover-lift"
+            className="btn-glass text-xs px-3 py-2 hover-lift"
           >
             Go
           </button>
         </div>
-      </footer>
+        </footer>
+      </div>
 
       {/* Error Dialog */}
       {error && (
