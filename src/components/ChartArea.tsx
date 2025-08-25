@@ -54,7 +54,7 @@ const ChartArea = forwardRef<any, ChartAreaProps>(({
   
 
 
-  // Smart update that only changes what's needed without full re-render
+  // Smart update that preserves zoom for channel visibility changes
   useEffect(() => {
     if (!chartRef.current) return;
     
@@ -63,47 +63,43 @@ const ChartArea = forwardRef<any, ChartAreaProps>(({
 
     const prev = prevValues.current;
     
-    // Check if only UI elements changed (not data)
-    const onlyUIChanged = (
+    // Check if only channel visibility changed
+    const onlyChannelVisibilityChanged = (
       data === data && // Data reference didn't change
       timeMapping === timeMapping && // Time mapping didn't change
       reconstructedTime === reconstructedTime && // Reconstructed time didn't change
-      (
-        prev.channels !== channels ||
-        prev.displayMode !== displayMode ||  
-        prev.isDark !== isDark ||
-        prev.logoUrl !== logoUrl ||
-        prev.clientName !== clientName
-      )
+      prev.displayMode === displayMode &&
+      prev.isDark === isDark &&
+      prev.logoUrl === logoUrl &&
+      prev.clientName === clientName &&
+      prev.channels !== channels && // Channels array changed
+      prev.channels.length === channels.length && // Same number of channels
+      prev.channels.every((prevCh, i) => {
+        const currentCh = channels[i];
+        return prevCh.id === currentCh.id && 
+               prevCh.color === currentCh.color && 
+               prevCh.customName === currentCh.customName &&
+               prevCh.label === currentCh.label;
+      }) // Only visibility could have changed
     );
 
-    if (onlyUIChanged) {
-      // Partial update for UI-only changes to preserve zoom
-      const partialOption: any = {};
+    if (onlyChannelVisibilityChanged) {
+      // Preserve zoom state for visibility changes
+      const currentOption = chartInstance.getOption();
+      const currentDataZoom = currentOption.dataZoom;
       
-      if (prev.channels !== channels) {
-        partialOption.series = option.series;
-        partialOption.legend = option.legend;
-      }
       
-      if (prev.isDark !== isDark) {
-        partialOption.backgroundColor = option.backgroundColor;
-        partialOption.xAxis = { ...option.xAxis };
-        partialOption.yAxis = { ...option.yAxis };
-      }
+      // Update with new option (full update for series changes)
+      chartInstance.setOption(option, true);
       
-      if (prev.logoUrl !== logoUrl || prev.clientName !== clientName) {
-        partialOption.graphic = option.graphic;
+      // Restore zoom state  
+      if (currentDataZoom && Array.isArray(currentDataZoom) && currentDataZoom.length > 0) {
+        chartInstance.setOption({
+          dataZoom: currentDataZoom
+        }, false);
       }
-
-      if (prev.displayMode !== displayMode) {
-        partialOption.series = option.series;
-      }
-
-      // Use partial update to preserve zoom
-      chartInstance.setOption(partialOption, false); // false = merge, don't replace
     } else {
-      // Full update for data changes
+      // Regular update for other changes
       chartInstance.setOption(option, true);
     }
 

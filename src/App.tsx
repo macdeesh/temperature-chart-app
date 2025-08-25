@@ -245,23 +245,23 @@ function App() {
     // Keeping for potential future browser compatibility
   };
 
-  const toggleChannel = (channelId: number) => {
+  const toggleChannel = useCallback((channelId: number) => {
     setChannels(prev => prev.map(ch => 
       ch.id === channelId ? { ...ch, visible: !ch.visible } : ch
     ));
-  };
+  }, []);
 
-  const changeChannelColor = (channelId: number, color: string) => {
+  const changeChannelColor = useCallback((channelId: number, color: string) => {
     setChannels(prev => prev.map(ch => 
       ch.id === channelId ? { ...ch, color } : ch
     ));
-  };
+  }, []);
 
-  const updateChannelName = (channelId: number, customName: string) => {
+  const updateChannelName = useCallback((channelId: number, customName: string) => {
     setChannels(prev => prev.map(ch => 
       ch.id === channelId ? { ...ch, customName: customName } : ch
     ));
-  };
+  }, []);
 
   const calculateStats = (channelId: number) => {
     const channelData = data.filter(d => d.channel === channelId);
