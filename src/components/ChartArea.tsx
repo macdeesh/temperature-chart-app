@@ -61,9 +61,6 @@ const ChartArea = forwardRef<any, ChartAreaProps>(({
     const chartInstance = chartRef.current.getEchartsInstance();
     if (!chartInstance) return;
 
-    const prev = prevValues.current;
-    
-    
     // Check if only UI elements changed (should preserve zoom for ALL UI changes)
     const onlyUIChanged = (
       data === data && // Data reference didn't change
@@ -92,7 +89,7 @@ const ChartArea = forwardRef<any, ChartAreaProps>(({
       chartInstance.setOption(option, true);
     }
 
-    // Update previous values
+    // Update previous values for next comparison
     prevValues.current = { channels, displayMode, isDark, logoUrl, clientName };
   }, [option, channels, displayMode, isDark, logoUrl, clientName, data, timeMapping, reconstructedTime]);
 
