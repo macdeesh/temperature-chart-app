@@ -63,6 +63,7 @@ const ChartArea = forwardRef<any, ChartAreaProps>(({
 
     const prev = prevValues.current;
     
+    
     // Check if only channel visibility changed
     const onlyChannelVisibilityChanged = (
       data === data && // Data reference didn't change
@@ -78,18 +79,36 @@ const ChartArea = forwardRef<any, ChartAreaProps>(({
         const currentCh = channels[i];
         return prevCh.id === currentCh.id && 
                prevCh.color === currentCh.color && 
-               prevCh.customName === currentCh.customName &&
                prevCh.label === currentCh.label;
       }) // Only visibility could have changed
     );
 
-    if (onlyChannelVisibilityChanged) {
-      // Preserve zoom state for visibility changes
+    // Check if only theme changed (channels might be recreated but with same content)
+    const onlyThemeChanged = (
+      data === data && // Data reference didn't change
+      timeMapping === timeMapping && // Time mapping didn't change
+      reconstructedTime === reconstructedTime && // Reconstructed time didn't change
+      prev.displayMode === displayMode &&
+      prev.logoUrl === logoUrl &&
+      prev.clientName === clientName &&
+      prev.isDark !== isDark && // Theme changed
+      prev.channels.length === channels.length && // Same number of channels
+      prev.channels.every((prevCh, i) => {
+        const currentCh = channels[i];
+        return prevCh.id === currentCh.id && 
+               prevCh.color === currentCh.color && 
+               prevCh.label === currentCh.label &&
+               prevCh.visible === currentCh.visible;
+      }) // Channels have same content (just recreated array)
+    );
+
+    if (onlyChannelVisibilityChanged || onlyThemeChanged) {
+      // Preserve zoom state for visibility or theme changes
       const currentOption = chartInstance.getOption();
       const currentDataZoom = currentOption.dataZoom;
       
       
-      // Update with new option (full update for series changes)
+      // Update with new option (full update for series/theme changes)
       chartInstance.setOption(option, true);
       
       // Restore zoom state  

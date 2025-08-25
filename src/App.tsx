@@ -626,45 +626,35 @@ function App() {
           const contextRange = 10; // Show ±10 data points around target
           const yAxisView = calculateOptimalYAxisView(targetIndex, data, contextRange);
           
-          // Calculate time range for context (±2 minutes around target)
+          // Get target timestamp and temperature range for context
           const targetTimestamp = new Date(targetTimePoint.isoTimestamp).getTime();
-          const contextTimeSpan = 2 * 60 * 1000; // 2 minutes in milliseconds
-          const startTime = targetTimestamp - contextTimeSpan;
-          const endTime = targetTimestamp + contextTimeSpan;
           
-          // Get full data range from reconstructed time
-          const fullTimeStart = new Date(reconstructedTime[0].isoTimestamp).getTime();
-          const fullTimeEnd = new Date(reconstructedTime[reconstructedTime.length - 1].isoTimestamp).getTime();
-          const fullTimeRange = fullTimeEnd - fullTimeStart;
-          
-          // Get full temperature range from chart data
+          // Get full temperature range from chart data for Y-axis context
           const allTemps = data.map(d => d.temperature);
           const fullTempMin = Math.min(...allTemps);
           const fullTempMax = Math.max(...allTemps);
           const fullTempRange = fullTempMax - fullTempMin;
           
-          // Note: Using wider context window instead of exact calculated percentages
-
-          // Apply zoom using dataZoom (preserves ability to reset) 
-          // Use wider window for better context around target time
-          const timeWindowPercent = 15; // Show 15% of total time range around target
-          const tempWindowPercent = 30; // Show 30% of total temp range around target
+          // Use direct timestamp-based centering for accurate positioning
+          const contextTimeSpan = 4 * 60 * 1000; // 4 minutes context (2 min before + 2 min after target)
+          const startTime = targetTimestamp - contextTimeSpan;
+          const endTime = targetTimestamp + contextTimeSpan;
           
-          const targetTimePercent = ((targetTimestamp - fullTimeStart) / fullTimeRange) * 100;
-          const targetTempPercent = (((yAxisView.yMin + yAxisView.yMax) / 2 - fullTempMin) / fullTempRange) * 100;
           
+          // Use ECharts native time-based dataZoom for precise centering
           chartInstance.dispatchAction({
             type: 'dataZoom',
             dataZoomIndex: 0,
-            start: Math.max(0, targetTimePercent - timeWindowPercent/2),
-            end: Math.min(100, targetTimePercent + timeWindowPercent/2)
+            startValue: startTime,
+            endValue: endTime
           });
           
+          // Also set temperature context
           chartInstance.dispatchAction({
             type: 'dataZoom', 
             dataZoomIndex: 1,
-            start: Math.max(0, targetTempPercent - tempWindowPercent/2),
-            end: Math.min(100, targetTempPercent + tempWindowPercent/2)
+            start: Math.max(0, (((yAxisView.yMin + yAxisView.yMax) / 2 - fullTempMin) / fullTempRange) * 100 - 15),
+            end: Math.min(100, (((yAxisView.yMin + yAxisView.yMax) / 2 - fullTempMin) / fullTempRange) * 100 + 15)
           });
           
           console.log('Jump to time:', {
