@@ -64,46 +64,16 @@ const ChartArea = forwardRef<any, ChartAreaProps>(({
     const prev = prevValues.current;
     
     
-    // Check if only channel visibility changed
-    const onlyChannelVisibilityChanged = (
+    // Check if only UI elements changed (should preserve zoom for ALL UI changes)
+    const onlyUIChanged = (
       data === data && // Data reference didn't change
-      timeMapping === timeMapping && // Time mapping didn't change
-      reconstructedTime === reconstructedTime && // Reconstructed time didn't change
-      prev.displayMode === displayMode &&
-      prev.isDark === isDark &&
-      prev.logoUrl === logoUrl &&
-      prev.clientName === clientName &&
-      prev.channels !== channels && // Channels array changed
-      prev.channels.length === channels.length && // Same number of channels
-      prev.channels.every((prevCh, i) => {
-        const currentCh = channels[i];
-        return prevCh.id === currentCh.id && 
-               prevCh.color === currentCh.color && 
-               prevCh.label === currentCh.label;
-      }) // Only visibility could have changed
+      timeMapping === timeMapping && // Time mapping didn't change  
+      reconstructedTime === reconstructedTime // Reconstructed time didn't change
+      // Any other changes are UI-only: theme, channels, display mode, logo, client name
     );
 
-    // Check if only theme changed (channels might be recreated but with same content)
-    const onlyThemeChanged = (
-      data === data && // Data reference didn't change
-      timeMapping === timeMapping && // Time mapping didn't change
-      reconstructedTime === reconstructedTime && // Reconstructed time didn't change
-      prev.displayMode === displayMode &&
-      prev.logoUrl === logoUrl &&
-      prev.clientName === clientName &&
-      prev.isDark !== isDark && // Theme changed
-      prev.channels.length === channels.length && // Same number of channels
-      prev.channels.every((prevCh, i) => {
-        const currentCh = channels[i];
-        return prevCh.id === currentCh.id && 
-               prevCh.color === currentCh.color && 
-               prevCh.label === currentCh.label &&
-               prevCh.visible === currentCh.visible;
-      }) // Channels have same content (just recreated array)
-    );
-
-    if (onlyChannelVisibilityChanged || onlyThemeChanged) {
-      // Preserve zoom state for visibility or theme changes
+    if (onlyUIChanged) {
+      // Preserve zoom state for all UI-only changes (theme, channels, display mode, logo, etc.)
       const currentOption = chartInstance.getOption();
       const currentDataZoom = currentOption.dataZoom;
       
