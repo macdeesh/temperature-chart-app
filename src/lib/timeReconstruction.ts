@@ -11,27 +11,6 @@ export interface ReconstructedTimePoint {
 }
 
 /**
- * Detect timestamp format in CSV data
- */
-function detectTimeFormat(timeString: string): 'HH:MM:SS' | 'HH:MM' | 'unknown' {
-  const parts = timeString.trim().split(':');
-  if (parts.length === 3) return 'HH:MM:SS';
-  if (parts.length === 2) return 'HH:MM';
-  return 'unknown';
-}
-
-/**
- * Parse time string to seconds from start of day
- */
-function parseTimeToSeconds(timeString: string): number {
-  const parts = timeString.split(':').map(Number);
-  const hours = parts[0] || 0;
-  const minutes = parts[1] || 0;
-  const seconds = parts[2] || 0;
-  return hours * 3600 + minutes * 60 + seconds;
-}
-
-/**
  * Format seconds back to time string
  */
 function formatSecondsToTime(totalSeconds: number, includeSeconds: boolean = true): string {
@@ -44,19 +23,6 @@ function formatSecondsToTime(totalSeconds: number, includeSeconds: boolean = tru
   } else {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
   }
-}
-
-/**
- * Create ISO timestamp from time string using a fixed base date
- */
-function createISOTimestamp(timeString: string, baseDate: string = '2024-01-01'): string {
-  // Handle both HH:MM and HH:MM:SS formats
-  const timeParts = timeString.split(':');
-  const hours = timeParts[0];
-  const minutes = timeParts[1];  
-  const seconds = timeParts[2] || '00';
-  
-  return `${baseDate}T${hours}:${minutes}:${seconds}Z`;
 }
 
 /**
@@ -89,7 +55,7 @@ export function reconstructTimeAxis(timeMapping: Array<{index: number, displayTi
       };
     }
     return null;
-  }).filter(Boolean);
+  }).filter((pt): pt is NonNullable<typeof pt> => pt !== null);
   
   if (parsedTimes.length === 0) return [];
   
@@ -100,7 +66,7 @@ export function reconstructTimeAxis(timeMapping: Array<{index: number, displayTi
   });
   
   // Create reconstructed points with proper ISO timestamps
-  parsedTimes.forEach((pt, index) => {
+  parsedTimes.forEach((pt) => {
     const hours = String(pt.hours).padStart(2, '0');
     const minutes = String(pt.minutes).padStart(2, '0');
     const seconds = String(pt.seconds).padStart(2, '0');

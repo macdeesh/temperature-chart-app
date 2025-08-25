@@ -1,6 +1,6 @@
 // FILE: src/components/ChartArea.tsx
 // Main chart area using ECharts with zoom/pan functionality
-import { forwardRef, useImperativeHandle, useRef, useEffect, useMemo, useState } from 'react';
+import { forwardRef, useImperativeHandle, useRef, useEffect, useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { createChartOption } from '../lib/chartConfig';
 import type { TemperatureDataPoint, ChartDisplayMode } from '../types';
