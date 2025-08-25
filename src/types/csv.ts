@@ -1,11 +1,9 @@
 // FILE: src/types/csv.ts
 // CSV validation types per PRD requirements with time mapping support
 
-export interface TemperatureDataPoint {
-  time: number; // sequential index (0, 1, 2, 3...)
-  temperature: number; // °C, truncated to 1 decimal
-  channel: number; // 1-12
-}
+// Re-export TemperatureDataPoint from main types to avoid duplication
+export type { TemperatureDataPoint } from './index';
+import type { TemperatureDataPoint } from './index';
 
 export interface TimeMapping {
   index: number; // sequential index (0, 1, 2...)
@@ -20,8 +18,18 @@ export interface CSVValidationError {
   column?: number;
 }
 
+export interface ReconstructedTimePoint {
+  originalIndex: number;
+  displayTime: string;
+  actualTime: string;
+  isoTimestamp: string; // ISO timestamp for ECharts time axis
+  timeInSeconds: number;
+  hasOriginalSeconds: boolean;
+}
+
 export interface CSVParseResult {
   data: TemperatureDataPoint[];
   timeMapping: TimeMapping[];
+  reconstructedTime: ReconstructedTimePoint[];
   error?: CSVValidationError;
 }

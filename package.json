@@ -16,6 +16,7 @@
     "@tauri-apps/plugin-opener": "^2",
     "echarts": "^5.6.0",
     "echarts-for-react": "^3.0.2",
+    "jspdf": "^3.0.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

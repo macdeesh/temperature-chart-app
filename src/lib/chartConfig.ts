@@ -1,8 +1,11 @@
-// ECharts configuration - scatter+line hybrid, Y=-100..1400 with 25° major, 10° minor
+// ECharts configuration - scatter+line hybrid with smart scaling for v1.1
 
 import type { EChartsOption } from 'echarts';
 import type { TemperatureDataPoint, ChartDisplayMode } from '../types';
-import type { TimeMapping } from '../types/csv';
+import type { TimeMapping, ReconstructedTimePoint } from '../types/csv';
+import { calculateTemperatureScale } from './chartScaling';
+import { createGapFilledTimeSeries } from './timeReconstruction';
+import { addTrendIndicators } from '../utils/trendUtils';
 
 interface ChannelConfig {
   id: number;
@@ -17,34 +20,71 @@ export function createChartOption(
   channels: ChannelConfig[],
   displayMode: ChartDisplayMode,
   isDark: boolean = false,
-  timeMapping: TimeMapping[] = []
+  timeMapping: TimeMapping[] = [],
+  reconstructedTime: ReconstructedTimePoint[] = [],
+  logoUrl?: string,
+  clientName?: string
 ): EChartsOption {
   const visibleChannels = channels.filter(c => c.visible);
   
-  // Group data by channel
+  console.log('Chart data setup:', {
+    dataPoints: data.length,
+    visibleChannels: visibleChannels.length,
+    reconstructedTimePoints: reconstructedTime.length,
+    timeMappingPoints: timeMapping.length
+  });
+  
+  // Create gap-filled series data using native time axis
   const seriesData = visibleChannels.map(channel => {
-    const channelData = data
-      .filter(d => d.channel === channel.id)
-      .map(d => [d.time, d.temperature] as [number, number])
-      .sort((a, b) => a[0] - b[0]); // Sort by time
+    const gapFilledData = createGapFilledTimeSeries(data, reconstructedTime, channel.id);
+    
+    // Add trend indicators using optimized utility function
+    const dataWithTrends = addTrendIndicators(gapFilledData);
+    
+    console.log(`Channel ${channel.id} (${channel.label}):`, {
+      originalDataPoints: data.filter(d => d.channel === channel.id).length,
+      gapFilledPoints: gapFilledData.length,
+      nullGaps: gapFilledData.filter(([, temp]) => temp === null).length
+    });
 
     const baseConfig = {
       name: channel.label,
-      data: channelData,
+      data: dataWithTrends,
       color: channel.color,
-      symbolSize: 4,
-      lineStyle: { width: 2 }
+      symbolSize: 5, // Increased from 4 to 5 for better visibility
+      lineStyle: { width: 2 },
+      connectNulls: false, // Important: don't connect across null gaps
+      animation: true,
+      animationDuration: 800,
+      animationEasing: 'cubicOut' as const
     };
 
     // Return series based on display mode
     switch (displayMode.type) {
       case 'scatter':
-        return { ...baseConfig, type: 'scatter' as const };
+        return { 
+          ...baseConfig, 
+          type: 'scatter' as const,
+          itemStyle: {
+            borderColor: isDark ? '#FFFFFF' : '#333333', // White border in dark mode, dark in light mode
+            borderWidth: 0.5 // Minimalist thin border
+          }
+        };
       case 'line':
-        return { ...baseConfig, type: 'line' as const, symbol: 'none' };
+        return { ...baseConfig, type: 'line' as const, symbol: 'none', showSymbol: false };
       case 'both':
       default:
-        return { ...baseConfig, type: 'line' as const, showSymbol: true };
+        return { 
+          ...baseConfig, 
+          type: 'line' as const, 
+          symbol: 'circle', // Explicitly set symbol type
+          showSymbol: true,
+          symbolSize: 5, // Consistent with base config
+          itemStyle: {
+            borderColor: isDark ? '#FFFFFF' : '#333333', // White border in dark mode, dark in light mode
+            borderWidth: 0.5 // Minimalist thin border
+          }
+        };
     }
   });
 
@@ -52,115 +92,229 @@ export function createChartOption(
   const textColor = isDark ? '#FFFFFF' : '#333333';
   const gridColor = isDark ? '#404040' : '#E0E0E0';
   const backgroundColor = isDark ? '#1E1E1E' : '#FFFFFF';
+  
+  // Calculate temperature range for smart scaling
+  const allTemps = data.map(d => d.temperature);
+  const dataMin = allTemps.length > 0 ? Math.min(...allTemps) : -100;
+  const dataMax = allTemps.length > 0 ? Math.max(...allTemps) : 1400;
+  const tempScale = calculateTemperatureScale(dataMin, dataMax);
+  
+  // Note: Time range is now handled by ECharts native time axis
+  // using ISO timestamps from reconstructedTime data
+
+  // Create logo watermark graphic
+  const logoGraphic = {
+    type: 'group',
+    right: 20,
+    bottom: 10, // 10px from bottom edge
+    children: [
+      // Logo image (custom or default app icon)
+      {
+        type: 'image',
+        style: {
+          image: logoUrl || '/app-icon.png', // Use custom logo or default app icon
+          width: 24,
+          height: 24,
+          opacity: 0.7
+        },
+        z: 100
+      },
+      // Client name text
+      {
+        type: 'text',
+        style: {
+          text: clientName || 'VizTherm',
+          x: 30, // Position next to logo
+          y: 12, // Center vertically with logo
+          textAlign: 'left',
+          textVerticalAlign: 'middle',
+          fontSize: 11,
+          fontWeight: 'normal',
+          fill: isDark ? '#FFFFFF' : '#333333',
+          opacity: 0.6
+        },
+        z: 100
+      }
+    ]
+  };
 
   return {
+    animation: true, // Enable animations for line drawing
+    animationDuration: 800, // Smooth line drawing animation
+    animationEasing: 'cubicOut',
+    // Disable specific animations that cause flicker
+    animationDurationUpdate: 0, // No animation for updates to prevent flicker
+    lazyUpdate: false, // Force synchronous updates
     backgroundColor,
     tooltip: {
       trigger: 'item',
       formatter: (params: any) => {
-        const [timeIndex, temp] = params.data;
-        const mapping = timeMapping.find(tm => tm.index === timeIndex);
-        const displayTime = mapping ? mapping.displayTime : `${timeIndex}s`;
+        const dataPoint = params.data;
+        const [timestamp, temp, trendIndicator] = dataPoint;
         
-        // Calculate trend indicator
-        const channelId = visibleChannels.find(ch => ch.label === params.seriesName)?.id;
-        let trendIndicator = '';
+        if (temp === null) return ''; // Don't show tooltip for gap markers
         
-        if (channelId) {
-          const channelData = data
-            .filter(d => d.channel === channelId)
-            .sort((a, b) => a.time - b.time);
-          
-          const currentIndex = channelData.findIndex(d => d.time === timeIndex);
-          
-          if (currentIndex > 0) {
-            const prevTemp = channelData[currentIndex - 1].temperature;
-            const currentTemp = channelData[currentIndex].temperature;
-            const tempDiff = currentTemp - prevTemp;
-            
-            if (tempDiff > 1) {
-              trendIndicator = ' ↗️ Rising';
-            } else if (tempDiff < -1) {
-              trendIndicator = ' ↘️ Falling';
-            } else {
-              trendIndicator = ' → Stable';
-            }
-          }
+        // Parse timestamp to show readable time
+        const date = new Date(timestamp);
+        const hours = String(date.getUTCHours()).padStart(2, '0');
+        const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+        const seconds = date.getUTCSeconds();
+        
+        let displayTime = `${hours}:${minutes}`;
+        if (seconds > 0) {
+          displayTime += `:${String(seconds).padStart(2, '0')}`;
         }
         
-        return `${params.seriesName}<br/>Time: ${displayTime}<br/>Temperature: ${temp}°C${trendIndicator}`;
+        // Use pre-calculated trend indicator or fallback to stable
+        const trend = trendIndicator || '→ Stable';
+        
+        return `${params.seriesName}<br/>Time: ${displayTime}<br/>Temperature: ${temp}°C<br/>${trend}`;
       }
     },
     legend: {
       type: 'scroll',
       orient: 'horizontal',
       bottom: 10,
-      textStyle: { color: textColor }
+      height: 30, // Force fixed height for legend
+      textStyle: { color: textColor },
+      show: true, // Ensure legend is always shown
+      itemStyle: {
+        borderColor: isDark ? '#FFFFFF' : '#333333', // Theme-appropriate border for legend symbols
+        borderWidth: 0.5 // Minimalist thin border matching chart
+      }
     },
     grid: {
       left: 80,
-      right: 40,
+      right: 40, 
       top: 40,
-      bottom: 80
+      bottom: 100, // Space for legend + logo
+      width: 'auto', // Let ECharts calculate width
+      height: 'auto' // Let ECharts calculate height within constraints
     },
     xAxis: {
-      type: 'value',
+      type: 'time', // Use ECharts native time axis
       name: 'Time',
       nameLocation: 'middle',
       nameGap: 30,
       nameTextStyle: { color: textColor },
       axisLine: { lineStyle: { color: textColor } },
-      axisTick: { lineStyle: { color: textColor } },
+      axisTick: { 
+        show: true,
+        length: 8, // Longer ticks for time labels
+        lineStyle: { 
+          color: isDark ? '#FFFFFF' : '#333333', 
+          width: 1.2,
+          opacity: 0.9
+        },
+        inside: false
+      },
       axisLabel: { 
         color: textColor,
         formatter: (value: number) => {
-          // Always round to nearest integer to avoid decimals
-          const roundedValue = Math.round(value);
-          const mapping = timeMapping.find(tm => tm.index === roundedValue);
+          const date = new Date(value);
+          const hours = String(date.getUTCHours()).padStart(2, '0');
+          const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+          const seconds = date.getUTCSeconds();
           
-          if (mapping) {
-            return mapping.displayTime;
+          // Show seconds only for intervals of 10 seconds or larger (no 5-second intervals)
+          if (seconds > 0 && seconds % 10 === 0) {
+            return `${hours}:${minutes}:${String(seconds).padStart(2, '0')}`;
+          } else if (seconds === 0) {
+            return `${hours}:${minutes}`;
+          } else {
+            // For non-10-second intervals, just show minutes
+            return `${hours}:${minutes}`;
           }
-          
-          // For padding values beyond our data, extrapolate realistic times
-          if (timeMapping.length > 0) {
-            const lastMapping = timeMapping[timeMapping.length - 1];
-            const extraMinutes = Math.round(roundedValue - lastMapping.index);
-            if (extraMinutes > 0) {
-              const [hours, minutes] = lastMapping.displayTime.split(':');
-              const totalMinutes = parseInt(hours) * 60 + parseInt(minutes) + extraMinutes;
-              const newHours = Math.floor(totalMinutes / 60);
-              const newMinutes = totalMinutes % 60;
-              return `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
-            }
-          }
-          
-          return roundedValue.toString();
         }
       },
-      splitLine: { lineStyle: { color: gridColor } },
-      splitNumber: 8, // Limit to ~8 major tick marks for cleaner display
-      min: (value: any) => Math.max(0, value.min - 1),
-      max: (value: any) => {
-        // Add padding after last time point - about 10% of data range
-        const range = value.max - value.min;
-        const padding = Math.max(2, Math.round(range * 0.1));
-        return value.max + padding;
+      splitLine: { 
+        show: true,
+        lineStyle: { 
+          color: gridColor, 
+          width: 1.2,
+          opacity: isDark ? 0.6 : 0.7,
+          type: 'solid'
+        } 
+      },
+      minorTick: {
+        show: true,
+        splitNumber: 6, // 6 minor divisions per major time interval for precise engineering readings
+        length: 5, // Slightly longer for better visibility
+        lineStyle: { 
+          color: isDark ? '#DDDDDD' : '#555555', 
+          width: 0.7, 
+          opacity: 1.0 
+        }
+      },
+      minorSplitLine: {
+        show: true,
+        lineStyle: { 
+          color: gridColor, 
+          width: 0.6, 
+          opacity: isDark ? 0.45 : 0.55,
+          type: 'solid'
+        }
       }
     },
     yAxis: {
       type: 'value',
-      name: 'Temperature (°C)',
+      name: 'Temperature',
       nameLocation: 'middle',
-      nameGap: 50,
+      nameGap: 60, // Increased gap between title and temperature labels
       nameTextStyle: { color: textColor },
-      min: -100,
-      max: 1400,
-      interval: 25, // 25° major intervals
+      min: tempScale.min,
+      max: tempScale.max,
+      interval: tempScale.interval,
+      splitNumber: tempScale.splitNumber,
       axisLine: { lineStyle: { color: textColor } },
-      axisTick: { lineStyle: { color: textColor } },
-      axisLabel: { color: textColor },
-      splitLine: { lineStyle: { color: gridColor } }
+      axisTick: { 
+        show: true,
+        length: 8, // Longer ticks for temperature labels
+        lineStyle: { 
+          color: isDark ? '#FFFFFF' : '#333333', 
+          width: 1.2,
+          opacity: 0.9
+        },
+        inside: false
+      },
+      axisLabel: { 
+        color: textColor,
+        margin: 15, // Add margin between axis line and temperature labels
+        // Ensure no decimal places on temperature labels
+        formatter: (value: number) => {
+          const rounded = Math.round(value);
+          return `${rounded}°C`;
+        }
+      },
+      splitLine: { 
+        show: true,
+        lineStyle: { 
+          color: gridColor, 
+          width: 1.2,
+          opacity: isDark ? 0.6 : 0.7,
+          type: 'solid'
+        } 
+      },
+      // Professional engineering-style minor ticks for temperature axis
+      minorTick: {
+        show: true,
+        splitNumber: 5, // 5 minor divisions per major interval (every 5°C for 25°C intervals)
+        length: 5, // Length of tick marks on axis line only
+        lineStyle: { 
+          color: isDark ? '#DDDDDD' : '#555555', 
+          width: 0.7, 
+          opacity: 1.0 
+        } // Keep ticks on the axis line, not extending into chart
+      },
+      minorSplitLine: {
+        show: true,
+        lineStyle: { 
+          color: gridColor, 
+          width: 0.6, 
+          opacity: isDark ? 0.5 : 0.6,
+          type: 'solid'
+        }
+      }
     },
     series: seriesData,
     dataZoom: [
@@ -168,9 +322,9 @@ export function createChartOption(
         type: 'inside',
         xAxisIndex: 0,
         filterMode: 'none',
-        minValueSpan: 5, // Minimum zoom shows 5 data points
-        maxValueSpan: data.length + 10, // Maximum zoom shows all data plus padding
-        zoomOnMouseWheel: true,
+        minValueSpan: 100000, // Minimum zoom shows 1 minute 40 seconds (100 seconds in milliseconds)
+        maxValueSpan: undefined, // Allow full zoom out
+        zoomOnMouseWheel: true, // Enable default zoom for vertical scroll
         moveOnMouseMove: true,
         preventDefaultMouseMove: false
       },
@@ -180,8 +334,9 @@ export function createChartOption(
         filterMode: 'none',
         minValueSpan: 50, // Minimum 50°C range
         zoomOnMouseWheel: 'shift', // Only zoom Y-axis with Shift+scroll
-        moveOnMouseMove: false
+        moveOnMouseMove: 'shift' // Allow dragging up/down when holding Shift
       }
-    ]
+    ],
+    graphic: [logoGraphic]
   };
 }

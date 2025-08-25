@@ -1,8 +1,9 @@
-// FILE: src/lib/csvParser.ts
-// Enhanced CSV parser for real-world datetime format with time mapping
+// FILE: src/lib/csvParser.ts  
+// Enhanced CSV parser with smart time reconstruction for professional charting
 import type { TemperatureDataPoint, CSVValidationError, CSVParseResult, TimeMapping } from '../types/csv';
+import { reconstructTimeAxis } from './timeReconstruction';
 
-const MAX_ROWS = 1000; // "hundreds of lines OK" per PRD
+const MAX_ROWS = 5000; // Updated for v1.1 - support larger datasets
 const TEMP_MIN = -100.0;
 const TEMP_MAX = 1400.0;
 
@@ -43,6 +44,7 @@ export function parseCSV(content: string): CSVParseResult {
     return {
       data: [],
       timeMapping: [],
+      reconstructedTime: [],
       error: { 
         type: 'tooLarge', 
         message: `File too large. Maximum supported rows: ${MAX_ROWS}` 
@@ -54,6 +56,7 @@ export function parseCSV(content: string): CSVParseResult {
     return {
       data: [],
       timeMapping: [],
+      reconstructedTime: [],
       error: {
         type: 'invalidValue',
         message: 'Empty file'
@@ -75,6 +78,7 @@ export function parseCSV(content: string): CSVParseResult {
     return {
       data: [],
       timeMapping: [],
+      reconstructedTime: [],
       error: { 
         type: 'delimiter', 
         message: 'Invalid delimiter, expected ; or ,' 
@@ -90,6 +94,7 @@ export function parseCSV(content: string): CSVParseResult {
     return {
       data: [],
       timeMapping: [],
+      reconstructedTime: [],
       error: { 
         type: 'columnCount', 
         message: `Expected at least ${expectedMinCols} columns, found ${firstRowCols.length}` 
@@ -104,6 +109,7 @@ export function parseCSV(content: string): CSVParseResult {
     return {
       data: [],
       timeMapping: [],
+      reconstructedTime: [],
       error: {
         type: 'dateFormat',
         message: 'First column must contain datetime format (e.g., "15/07/2021 10:38")'
@@ -126,6 +132,7 @@ export function parseCSV(content: string): CSVParseResult {
       return {
         data: [],
         timeMapping: [],
+        reconstructedTime: [],
         error: { 
           type: 'columnCount',
           message: `Expected ${expectedColCount} columns, found ${cols.length}`,
@@ -142,6 +149,7 @@ export function parseCSV(content: string): CSVParseResult {
       return {
         data: [],
         timeMapping: [],
+        reconstructedTime: [],
         error: { 
           type: 'dateFormat',
           message: `Invalid datetime format in row ${i + 1}, column 1`,
@@ -183,6 +191,7 @@ export function parseCSV(content: string): CSVParseResult {
     return {
       data: [],
       timeMapping: [],
+      reconstructedTime: [],
       error: {
         type: 'invalidValue',
         message: 'No valid temperature data found in file'
@@ -190,7 +199,11 @@ export function parseCSV(content: string): CSVParseResult {
     };
   }
 
-  return { data, timeMapping };
+  // Apply smart time reconstruction
+  const reconstructedTime = reconstructTimeAxis(timeMapping);
+  
+  // For now, keep data as-is but provide reconstructed time for chart formatting
+  return { data, timeMapping, reconstructedTime };
 }
 
 // Utility function to get display time from mapping
