@@ -31,3 +31,6 @@ v*_roadmap.md
 OPTIMIZATION_SUMMARY.md
 license_system_docs.md
 CONTEXT_RECOVERY.md
+
+# Internal Tools (keep locally, exclude from repository)
+license-key-generator.html
