@@ -2,15 +2,19 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { parseCSV } from './lib/csvParser';
 import type { TemperatureDataPoint, CSVValidationError, TimeMapping, ReconstructedTimePoint } from './types/csv';
 import type { ChartDisplayMode } from './types';
+import type { LicenseStatus } from './types/license';
 import ChartArea from './components/ChartArea';
 import DataTableView from './components/DataTableView';
 import ViewToggle from './components/ViewToggle';
 import LoadingSpinner from './components/LoadingSpinner';
 import UserGuideModal from './components/UserGuideModal';
+import LicenseModal from './components/LicenseModal';
 import { save, open } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, writeFile, readTextFile } from '@tauri-apps/plugin-fs';
 import { listen } from '@tauri-apps/api/event';
 import { calculateOptimalYAxisView } from './lib/chartScaling';
+import { validateLicense } from './lib/licenseValidation';
+import { getSavedLicense, clearLicense } from './lib/licenseStorage';
 import jsPDF from 'jspdf';
 
 interface Channel {
@@ -28,6 +32,14 @@ const DEFAULT_COLORS = [
 ];
 
 function App() {
+  const [licenseStatus, setLicenseStatus] = useState<LicenseStatus>({
+    valid: false,
+    daysRemaining: 0,
+    showLicenseModal: false,
+    error: '',
+    keyId: null,
+    loading: false,
+  });
   
   const [isDark, setIsDark] = useState(true);
   const [data, setData] = useState<TemperatureDataPoint[]>([]);
@@ -86,6 +98,66 @@ function App() {
       detail: { isDark } 
     }));
   }, [isDark]);
+
+  // License validation function - called on startup and user actions
+  const checkLicense = useCallback(async () => {
+    const savedLicense = getSavedLicense();
+    if (!savedLicense) {
+      setLicenseStatus({
+        valid: false,
+        daysRemaining: 0,
+        showLicenseModal: true,
+        error: 'No license found',
+        keyId: null,
+        loading: false,
+      });
+      return false;
+    }
+
+    try {
+      const result = await validateLicense(savedLicense);
+      
+      if (result.valid) {
+        setLicenseStatus({
+          valid: true,
+          daysRemaining: result.daysRemaining || 0,
+          showLicenseModal: false,
+          error: '',
+          keyId: result.keyId || null,
+          loading: false,
+        });
+        return true;
+      } else {
+        clearLicense();
+        setLicenseStatus({
+          valid: false,
+          daysRemaining: 0,
+          showLicenseModal: true,
+          error: result.error || 'License validation failed',
+          keyId: null,
+          loading: false,
+        });
+        return false;
+      }
+    } catch (error) {
+      clearLicense();
+      setLicenseStatus({
+        valid: false,
+        daysRemaining: 0,
+        showLicenseModal: true,
+        error: 'License validation error',
+        keyId: null,
+        loading: false,
+      });
+      return false;
+    }
+  }, []);
+
+  // Validate license on app startup only
+  useEffect(() => {
+    setLicenseStatus(prev => ({ ...prev, loading: true }));
+    checkLicense();
+  }, [checkLicense]);
 
   // Setup Tauri file drop event listener
   useEffect(() => {
@@ -167,6 +239,25 @@ function App() {
     }
   }, [data, isLoadingSession]);
 
+  const handleLicenseValidated = (result: any) => {
+    setLicenseStatus({
+      valid: true,
+      daysRemaining: result.daysRemaining || 0,
+      showLicenseModal: false,
+      error: '',
+      keyId: result.keyId || null,
+      loading: false,
+    });
+  };
+
+  const handleRenewLicense = () => {
+    setLicenseStatus(prev => ({
+      ...prev,
+      showLicenseModal: true,
+      error: 'Enter new license key to extend trial'
+    }));
+  };
+
   const handleCSVContent = async (content: string, filename: string) => {
     setIsLoadingCSV(true);
     
@@ -212,7 +303,11 @@ function App() {
     fileInputRef.current?.click();
   }, []);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    // Check license before allowing file operations
+    const isValid = await checkLicense();
+    if (!isValid) return;
+
     const file = event.target.files?.[0];
     if (file && file.name.toLowerCase().endsWith('.csv')) {
       const reader = new FileReader();
@@ -301,6 +396,10 @@ function App() {
 
 
   const handleExportPDF = async () => {
+    // Check license before allowing export operations
+    const isValid = await checkLicense();
+    if (!isValid) return;
+    
     if (!chartRef.current) {
       setError({
         type: 'invalidValue',
@@ -387,6 +486,10 @@ function App() {
   };
 
   const handleSaveSession = async () => {
+    // Check license before allowing save operations
+    const isValid = await checkLicense();
+    if (!isValid) return;
+    
     if (!data.length) return;
 
     try {
@@ -670,6 +773,31 @@ function App() {
 
   const activeChannels = channels.filter(ch => ch.dataCount > 0);
 
+  // Show loading screen during license validation
+  if (licenseStatus.loading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+        <LoadingSpinner
+          size="large"
+          text="Validating license..."
+          isDark={true}
+        />
+      </div>
+    );
+  }
+
+  // Show license modal on first startup if no license exists
+  if (!licenseStatus.valid && !licenseStatus.keyId && licenseStatus.error === 'No license found') {
+    return (
+      <>
+        <div className="h-screen w-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900" />
+        <LicenseModal
+          onLicenseValidated={handleLicenseValidated}
+          initialError={licenseStatus.error}
+        />
+      </>
+    );
+  }
 
   return (
     <>
@@ -784,6 +912,7 @@ function App() {
         )}
         
         <div className="ml-auto flex items-center space-x-4">
+          
           <button 
             onClick={() => setIsUserGuideOpen(true)}
             className="btn-glass hover-lift px-3 py-2 text-sm"
@@ -1072,6 +1201,39 @@ function App() {
             Go
           </button>
         </div>
+        
+        {/* License Status Display */}
+        {licenseStatus.valid && (
+          <div className={`flex items-center gap-2 ml-auto px-3 py-1 rounded-lg backdrop-blur-sm border ${isDark ? 'bg-white/10 border-white/20' : 'bg-black/5 border-gray-300'}`}>
+            <div className={`w-2 h-2 rounded-full ${
+              licenseStatus.daysRemaining <= 0.1 ? 'bg-red-400' : 
+              licenseStatus.daysRemaining <= 1 ? 'bg-yellow-400' : 'bg-green-400'
+            }`} />
+            <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+              {(() => {
+                const totalMinutes = licenseStatus.daysRemaining * 24 * 60;
+                if (totalMinutes < 60) {
+                  const minutes = Math.ceil(totalMinutes);
+                  return minutes === 1 ? '1 minute left' : `${minutes} minutes left`;
+                } else if (totalMinutes < 1440) { // Less than 24 hours
+                  const hours = Math.ceil(totalMinutes / 60);
+                  return hours === 1 ? '1 hour left' : `${hours} hours left`;
+                } else {
+                  const days = Math.ceil(licenseStatus.daysRemaining);
+                  return days === 1 ? '1 day left' : `${days} days left`;
+                }
+              })()}
+            </span>
+            {licenseStatus.daysRemaining <= 1 && (
+              <button
+                onClick={handleRenewLicense}
+                className="text-xs px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
+              >
+                Renew
+              </button>
+            )}
+          </div>
+        )}
         </footer>
       </div>
 
@@ -1106,6 +1268,14 @@ function App() {
         onClose={() => setIsUserGuideOpen(false)}
         isDark={isDark}
       />
+      
+      {/* License Modal Overlay - shows when license expires during runtime */}
+      {(!licenseStatus.valid || licenseStatus.showLicenseModal) && licenseStatus.error !== 'No license found' && (
+        <LicenseModal
+          onLicenseValidated={handleLicenseValidated}
+          initialError={licenseStatus.error}
+        />
+      )}
     </div>
     </>
   );

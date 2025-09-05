@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VizTherm License Key Generator</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: linear-gradient(to bottom right, #111827, #1f2937, #111827);
+            color: #f9fafb;
+            min-height: 100vh;
+        }
+        .container {
+            background: rgba(17, 24, 39, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(75, 85, 99, 0.3);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+        .form-group {
+            margin-bottom: 24px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #e5e7eb;
+            font-size: 14px;
+        }
+        input, select {
+            width: 100%;
+            padding: 16px;
+            border: 1px solid rgba(75, 85, 99, 0.5);
+            border-radius: 8px;
+            font-size: 14px;
+            background: rgba(17, 24, 39, 0.8);
+            color: #f9fafb;
+            backdrop-filter: blur(10px);
+            outline: none;
+            transition: all 0.2s ease;
+            box-sizing: border-box;
+        }
+        input:focus, select:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        button {
+            background: linear-gradient(135deg, #3b82f6, #1e40af);
+            color: white;
+            padding: 16px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.15s ease;
+            width: 100%;
+            backdrop-filter: blur(10px);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+        button:hover {
+            transform: translateY(-0.5px);
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+        .result {
+            background: rgba(14, 165, 233, 0.1);
+            border: 1px solid rgba(14, 165, 233, 0.3);
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 24px;
+            backdrop-filter: blur(10px);
+        }
+        .key-output {
+            background: rgba(17, 24, 39, 0.8);
+            color: #f9fafb;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+            word-break: break-all;
+            margin: 15px 0;
+            font-size: 14px;
+            border: 1px solid rgba(75, 85, 99, 0.3);
+        }
+        .copy-btn {
+            background: linear-gradient(135deg, #059669, #047857);
+            padding: 12px 20px;
+            font-size: 14px;
+            width: auto;
+            margin-top: 10px;
+        }
+        .copy-btn:hover {
+            background: linear-gradient(135deg, #047857, #065f46);
+        }
+        .warning {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            color: #fca5a5;
+            backdrop-filter: blur(10px);
+        }
+        h1 {
+            color: #f9fafb;
+            background: linear-gradient(135deg, #f9fafb, #d1d5db);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        h3 {
+            color: #7dd3fc;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>VizTherm License Key Generator</h1>
+        
+
+        <div class="form-group">
+            <label for="timeUnit">Time Unit</label>
+            <select id="timeUnit">
+                <option value="minutes">Minutes</option>
+                <option value="hours">Hours</option>
+                <option value="days">Days</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="timeValue">Duration</label>
+            <input type="number" id="timeValue" value="1" min="1" max="60">
+        </div>
+
+
+        <button onclick="generateKey()">Generate License Key</button>
+
+        <div id="result" class="result" style="display: none;">
+            <h3>Generated License Key</h3>
+            <div class="key-output" id="generatedKey"></div>
+            <button class="copy-btn" onclick="copyKey()">Copy Key</button>
+            
+            <div style="margin-top: 15px;">
+                <strong>Key Details:</strong>
+                <div id="keyDetails"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Same secret key as optimized generator
+        const SECRET_KEY_STRING = "VizTherm2025SecretKeyForDemoLice"; // Exactly 32 chars
+        const SECRET_KEY = new TextEncoder().encode(SECRET_KEY_STRING);
+
+        // Base32 encoding for shorter, more readable keys
+        const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+        
+        function base32Encode(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let result = '';
+            let bits = 0;
+            let value = 0;
+            
+            for (let i = 0; i < bytes.length; i++) {
+                value = (value << 8) | bytes[i];
+                bits += 8;
+                
+                while (bits >= 5) {
+                    result += BASE32_ALPHABET[(value >>> (bits - 5)) & 31];
+                    bits -= 5;
+                }
+            }
+            
+            if (bits > 0) {
+                result += BASE32_ALPHABET[(value << (5 - bits)) & 31];
+            }
+            
+            return result;
+        }
+
+        // Pack key data into compact binary format (28 bytes total to store minutes)
+        function packKeyData(keyData) {
+            const buffer = new ArrayBuffer(28);
+            const view = new DataView(buffer);
+            
+            // 8 bytes: timestamp (milliseconds since epoch)
+            const timestamp = Math.floor(keyData.referenceTime / 1000); // Store as seconds to save space
+            view.setUint32(0, Math.floor(timestamp / 0x100000000), false); // High 32 bits
+            view.setUint32(4, timestamp & 0xFFFFFFFF, false); // Low 32 bits
+            
+            // 4 bytes: valid minutes (instead of days, to handle fractional days properly)
+            const validMinutes = Math.round(keyData.validDays * 24 * 60); // Convert to total minutes
+            view.setUint32(8, validMinutes, false);
+            
+            // 1 byte: key type (encoded)
+            const typeMap = { 'TEST': 4, 'DEMO': 1, 'TRIAL': 2, 'EXTENDED': 3 };
+            view.setUint8(12, typeMap[keyData.keyType] || 4);
+            
+            // 15 bytes: random key ID (truncated UUID)
+            const keyIdBytes = crypto.getRandomValues(new Uint8Array(15));
+            for (let i = 0; i < 15; i++) {
+                view.setUint8(13 + i, keyIdBytes[i]);
+            }
+            
+            return new Uint8Array(buffer);
+        }
+
+        async function encryptData(packedData) {
+            try {
+                const cryptoKey = await crypto.subtle.importKey(
+                    'raw',
+                    SECRET_KEY,
+                    'AES-GCM',
+                    false,
+                    ['encrypt']
+                );
+
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+                const encrypted = await crypto.subtle.encrypt(
+                    { name: 'AES-GCM', iv: iv },
+                    cryptoKey,
+                    packedData
+                );
+
+                // Combine IV + encrypted data
+                const combined = new Uint8Array(iv.length + encrypted.byteLength);
+                combined.set(iv);
+                combined.set(new Uint8Array(encrypted), iv.length);
+                
+                return combined;
+            } catch (error) {
+                console.error('Encryption failed:', error);
+                return null;
+            }
+        }
+
+        async function generateHash(data) {
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            return new Uint8Array(hashBuffer.slice(0, 8)); // Only use first 8 bytes for shorter hash
+        }
+
+        async function generateKey() {
+            const timeUnit = document.getElementById('timeUnit').value;
+            const timeValue = parseInt(document.getElementById('timeValue').value);
+            const keyType = 'DEMO'; // Default key type
+
+            // Convert to days (fractional for minutes/hours)
+            let validDays;
+            let displayDuration;
+            switch (timeUnit) {
+                case 'minutes':
+                    validDays = timeValue / (24 * 60); // Convert minutes to fraction of a day
+                    displayDuration = `${timeValue} minute${timeValue !== 1 ? 's' : ''}`;
+                    break;
+                case 'hours':
+                    validDays = timeValue / 24; // Convert hours to fraction of a day
+                    displayDuration = `${timeValue} hour${timeValue !== 1 ? 's' : ''}`;
+                    break;
+                case 'days':
+                    validDays = timeValue;
+                    displayDuration = `${timeValue} day${timeValue !== 1 ? 's' : ''}`;
+                    break;
+            }
+
+            const keyData = {
+                referenceTime: Date.now(),
+                validDays: validDays,
+                keyType: keyType
+            };
+
+            try {
+                // Pack data into compact binary format
+                const packedData = packKeyData(keyData);
+                
+                // Encrypt the packed data
+                const encryptedData = await encryptData(packedData);
+                if (!encryptedData) {
+                    alert('Failed to encrypt key data');
+                    return;
+                }
+
+                // Generate short hash
+                const hash = await generateHash(encryptedData);
+                
+                // Combine encrypted data + hash
+                const combined = new Uint8Array(encryptedData.length + hash.length);
+                combined.set(encryptedData);
+                combined.set(hash, encryptedData.length);
+                
+                // Encode as Base32 for shorter, more readable keys
+                const encoded = base32Encode(combined);
+                const licenseKey = `VT-${encoded}`;
+
+                document.getElementById('generatedKey').textContent = licenseKey;
+                
+                const expirationTime = new Date(keyData.referenceTime + (keyData.validDays * 24 * 60 * 60 * 1000));
+                
+                // Format dates as DD/MM/YYYY
+                const formatDate = (date) => {
+                    const d = new Date(date);
+                    const day = String(d.getDate()).padStart(2, '0');
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const year = d.getFullYear();
+                    return `${day}/${month}/${year}`;
+                };
+                
+                document.getElementById('keyDetails').innerHTML = `
+                    <div><strong>Duration:</strong> ${displayDuration}</div>
+                    <div><strong>Generated:</strong> ${formatDate(keyData.referenceTime)}</div>
+                    <div><strong>Expires:</strong> ${formatDate(expirationTime)}</div>
+                `;
+                document.getElementById('result').style.display = 'block';
+            } catch (error) {
+                alert('Failed to generate key: ' + error.message);
+            }
+        }
+
+        function copyKey() {
+            const key = document.getElementById('generatedKey').textContent;
+            navigator.clipboard.writeText(key).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                btn.style.background = '#10b981';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '#059669';
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>
