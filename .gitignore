@@ -17,3 +17,17 @@ src-tauri/target/
 # System
 .DS_Store
 Thumbs.db
+
+# Internal Documentation (keep locally, exclude from repository)
+CLAUDE.md
+PROJECT_CONTEXT.md
+USER_GUIDE.md
+PRD.md
+Initial\ Setup\ Prompt.md
+DEVELOPMENT_LOG.md
+Time\ Axis\ Scaling\ Challenge\ -\ Context.md
+ISSUES_AND_SOLUTIONS.md
+v*_roadmap.md
+OPTIMIZATION_SUMMARY.md
+license_system_docs.md
+CONTEXT_RECOVERY.md

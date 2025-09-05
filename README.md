@@ -1,36 +1,29 @@
 # VizTherm - Professional Temperature Chart Application
 
-VizTherm is a professional desktop temperature visualization tool built with Tauri, React, and TypeScript. It provides engineering-grade temperature charting with precise data analysis capabilities.
+VizTherm is a professional desktop temperature visualization tool built with Tauri, React, and TypeScript. It provides engineering-grade temperature charting with precise data analysis capabilities and a secure demo license system.
 
-## 🚀 Features
+## ✨ Key Features
 
 ### Core Functionality
-
 - **Multi-channel temperature visualization** (up to 12 channels)
-- **Professional engineering charts** with minor/major grid lines
-- **Smart chart scaling** with logical temperature intervals (50°→25°→10°→5°)
-- **Time axis precision** with consistent time intervals
+- **Professional engineering charts** with minor/major grid lines  
+- **Smart chart scaling** with logical temperature intervals
 - **Interactive zoom and pan** with 60fps performance
-- **Large dataset support** (up to 5000 data points)
 - **Dual view modes** - Chart visualization and raw data table
-- **Responsive design** with horizontal scrolling for small windows
+- **Dark/Light theme** with professional glass-morphism styling
 
-### Professional Features
-
+### Professional Tools
 - **PDF Export** with high-resolution charts and company logos
-- **Company Logo Integration** with upload and customization
-- **Channel Renaming** with session persistence
 - **Session Management** (.tdproj files) for saving work
-- **Dark/Light Theme** with professional styling
-- **Trend Indicators** showing rising/falling/stable temperature trends
+- **Channel Renaming** with session persistence
+- **Large dataset support** (up to 5000 data points)
 
-### Engineering Precision
-
-- **Minor grid lines** every 5°C for precise temperature readings
-- **Professional tick marks** on both axes for measurement accuracy
-- **Smart Y-axis positioning** for "Jump to Time" functionality
-- **Gap handling** for discontinuous temperature data
-- **Time reconstruction** for CSV data with missing seconds
+### Demo License System
+- **Secure offline licensing** with AES-GCM encryption
+- **Flexible trial periods** (7-14 days for production, minutes/hours for testing)
+- **Professional license UI** matching app design
+- **Action-based validation** (no performance impact)
+- **Runtime expiration detection** with seamless user experience
 
 ## 🛠 Technology Stack
 
